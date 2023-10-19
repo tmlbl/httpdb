@@ -1,0 +1,3 @@
+[submodule "zinatra"]
+	path = zinatra
+	url = https://github.com/tmlbl/zinatra
