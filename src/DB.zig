@@ -107,6 +107,13 @@ pub const DB = struct {
             std.log.err("reading table definition: {s}", .{str});
             return error.Cerror;
         }
+        if (v == null) {
+            return null;
+        }
         return try std.json.parseFromSlice(TableDefinition, self.allocator, v[0..valueLength], .{});
     }
 };
+
+test "in this file" {
+    try std.testing.expect(1 == 2);
+}

@@ -27,18 +27,8 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     });
 
-    tests.linkLibC();
-    tests.linkSystemLibraryName("rocksdb");
-    tests.addIncludePath(.{ .path = "/usr/include" });
+    const run_tests = b.addRunArtifact(tests);
 
-    tests.addModule("zinatra", b.createModule(.{
-        .source_file = .{ .path = "./zinatra/src/App.zig" },
-    }));
-
-    b.installArtifact(tests);
-
-    // const run_tests = b.addRunArtifact(tests);
-
-    // const test_step = b.step("test", "Run the tests");
-    // test_step.dependOn(other: *Step)
+    const test_step = b.step("test", "Run the tests");
+    test_step.dependOn(&run_tests.step);
 }

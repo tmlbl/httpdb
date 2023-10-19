@@ -28,9 +28,10 @@ pub fn randomCharsAlloc(a: std.mem.Allocator, n: usize) ![]const u8 {
     return str;
 }
 
-pub fn tempDir(a: std.mem.Allocator, prefix: []const u8) ![]const u8 {
+pub fn tempDir(a: std.mem.Allocator, prefix: []const u8) ![:0]u8 {
     var buf = try a.alloc(u8, 10);
     randomChars(buf);
-    var p = try std.fmt.allocPrint(a, "/tmp/{s}-{s}", .{ prefix, buf });
+    var p = try std.fmt.allocPrintZ(a, "/tmp/{s}-{s}", .{ prefix, buf });
+    a.free(buf);
     return p;
 }
