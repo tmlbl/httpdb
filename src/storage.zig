@@ -12,20 +12,20 @@ pub const Options = struct {
     dirname: []const u8,
 };
 
-pub const TableDefinition = struct {
+pub const TableDef = struct {
     name: []const u8,
     columns: []const []const u8,
 };
 
-pub const DB = struct {
+// Store defines the on-disk storage system for csvd
+pub const Store = struct {
     db: *rdb.rocksdb_t,
     allocator: std.mem.Allocator,
 
-    pub fn init(opts: Options) !DB {
+    pub fn init(opts: Options) !Store {
         var options: ?*rdb.rocksdb_options_t = rdb.rocksdb_options_create();
         rdb.rocksdb_options_set_create_if_missing(options, 1);
 
-        std.debug.print("\nopening {s}...\n", .{opts.dirname});
         var err: ?[*:0]u8 = null;
         var db: ?*rdb.rocksdb_t = rdb.rocksdb_open(
             options,
@@ -39,10 +39,10 @@ pub const DB = struct {
         }
 
         std.log.info("opened rocksdb database: {s}", .{opts.dirname});
-        return DB{ .db = db.?, .allocator = opts.allocator };
+        return Store{ .db = db.?, .allocator = opts.allocator };
     }
 
-    fn tableKey(self: *DB, name: []const u8) ![]const u8 {
+    fn tableKey(self: *Store, name: []const u8) ![]const u8 {
         return std.fmt.allocPrint(
             self.allocator,
             "table:{s}",
@@ -50,7 +50,7 @@ pub const DB = struct {
         );
     }
 
-    pub fn createTable(self: *DB, def: *TableDefinition) !void {
+    pub fn createTable(self: *Store, def: *TableDef) !void {
         var key = try self.tableKey(def.name);
         defer self.allocator.free(key);
 
@@ -86,7 +86,7 @@ pub const DB = struct {
         }
     }
 
-    pub fn getTable(self: *DB, name: []const u8) !?std.json.Parsed(TableDefinition) {
+    pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(TableDef) {
         var key = try self.tableKey(name);
         defer self.allocator.free(key);
 
@@ -110,10 +110,60 @@ pub const DB = struct {
         if (v == null) {
             return null;
         }
-        return try std.json.parseFromSlice(TableDefinition, self.allocator, v[0..valueLength], .{});
+        return try std.json.parseFromSlice(
+            TableDef,
+            self.allocator,
+            v[0..valueLength],
+            .{},
+        );
     }
 };
 
-test "in this file" {
-    try std.testing.expect(1 == 2);
+const utils = @import("./utils.zig");
+const t = std.testing;
+
+const TestDB = struct {
+    s: Store,
+    dirname: [:0]u8,
+
+    pub fn init() !TestDB {
+        var dn = try utils.tempDir(t.allocator, "csvd-test-store");
+        return TestDB{
+            .s = try Store.init(.{
+                .allocator = t.allocator,
+                .dirname = dn,
+            }),
+            .dirname = dn,
+        };
+    }
+
+    pub fn deinit(self: *TestDB) void {
+        std.fs.deleteTreeAbsolute(self.dirname) catch unreachable;
+        std.debug.print("deleted directory {s}\n", .{self.dirname});
+        t.allocator.free(self.dirname);
+    }
+};
+
+test "data types" {
+    var td = try TestDB.init();
+    defer td.deinit();
+
+    var table = TableDef{
+        .name = "my_table",
+        .columns = &[_][]const u8{ "foo", "bar" },
+    };
+
+    // create a table
+    try td.s.createTable(&table);
+
+    // fetch it back from disk
+    var fetched = try td.s.getTable(table.name);
+    defer fetched.?.deinit();
+    var ftable = fetched.?.value;
+
+    try t.expect(std.mem.eql(u8, ftable.name, table.name));
+    try t.expect(ftable.columns.len == table.columns.len);
+    for (0..table.columns.len) |i| {
+        try t.expect(std.mem.eql(u8, table.columns[i], ftable.columns[i]));
+    }
 }

@@ -1,13 +1,12 @@
 const std = @import("std");
 const zin = @import("zinatra");
 
-const utils = @import("./utils.zig");
-const rdb = @import("./DB.zig");
-const DB = rdb.DB;
+const storage = @import("./storage.zig");
+const Store = storage.Store;
 
 const max_row_size = 4096;
 
-var db: ?DB = null;
+var store: ?Store = null;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -21,7 +20,7 @@ pub fn main() !void {
 
     try app.post("/tables/:name", postData);
 
-    db = try DB.init(.{ .dirname = "/tmp/testdb", .allocator = gpa.allocator() });
+    store = try Store.init(.{ .dirname = "/tmp/csvd", .allocator = gpa.allocator() });
 
     try app.listen();
 }
@@ -33,20 +32,42 @@ fn version(ctx: *zin.Context) !void {
 fn postData(ctx: *zin.Context) !void {
     var name = ctx.params.get("name").?;
     var r = ctx.res.reader();
-    var header = try r.readUntilDelimiterAlloc(ctx.arena.allocator(), '\n', max_row_size);
-    std.log.debug("posting data to table {s} with header: {s}", .{ name, header });
-}
+    var header = try r.readUntilDelimiterAlloc(ctx.allocator(), '\n', max_row_size);
 
-test "data types" {
-    var temp = try utils.tempDir(std.testing.allocator, "rockstest");
-    defer std.testing.allocator.free(temp);
-    var td = try DB.init(.{
-        .dirname = temp,
-        .allocator = std.testing.allocator,
-    });
-    var table = rdb.TableDefinition{
-        .name = "my_table",
-        .columns = &[_][]const u8{ "foo", "bar" },
-    };
-    try td.createTable(&table);
+    // create table if not exists
+    if (try store.?.getTable(name) == null) {
+        var ncols = std.mem.count(u8, header, ",") + 1;
+        var ndef = try ctx.allocator().create(storage.TableDef);
+        ndef.name = name;
+        var columns = try ctx.allocator().alloc([]const u8, ncols);
+        var i: usize = 0;
+        var it = std.mem.split(u8, header, ",");
+        while (it.next()) |col| {
+            columns[i] = col;
+            i += 1;
+        }
+        ndef.columns = columns;
+        try store.?.createTable(ndef);
+        std.log.debug("created table {s}", .{ndef.name});
+    }
+
+    // fetch table def and verify header
+    var p = try store.?.getTable(name);
+    var def = p.?.value;
+
+    var i: usize = 0;
+    var it = std.mem.split(u8, header, ",");
+    while (it.next()) |col| {
+        if (!std.mem.eql(u8, col, def.columns[i])) {
+            try ctx.err(.bad_request, try std.fmt.allocPrint(
+                ctx.allocator(),
+                "unexpected column: {s}",
+                .{col},
+            ));
+            return;
+        }
+        i += 1;
+    }
+
+    try ctx.text("ok");
 }
