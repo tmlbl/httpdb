@@ -19,6 +19,7 @@ pub fn main() !void {
     try app.get("/version", version);
 
     try app.post("/tables/:name", postData);
+    try app.get("/tables/:name", readData);
 
     store = try Store.init(.{ .dirname = "/tmp/csvd", .allocator = gpa.allocator() });
 
@@ -69,5 +70,38 @@ fn postData(ctx: *zin.Context) !void {
         i += 1;
     }
 
+    // write rows
+    var buf = try ctx.allocator().alloc(u8, max_row_size);
+    while (true) {
+        var row = r.readUntilDelimiter(buf, '\n') catch |err| {
+            if (err == error.EndOfStream) {
+                break;
+            } else {
+                return err;
+            }
+        };
+        try store.?.writeRow(def.name, row);
+    }
+
     try ctx.text("ok");
+}
+
+fn readData(ctx: *zin.Context) !void {
+    var name = ctx.params.get("name").?;
+    var it = try store.?.scanRows(name);
+    defer it.deinit();
+
+    ctx.res.transfer_encoding = .chunked;
+
+    try ctx.res.headers.append("Content-Type", "text/csv");
+
+    try ctx.res.do();
+
+    var w = ctx.res.writer();
+    while (it.next()) |row| {
+        try w.writeAll(row);
+        try w.writeAll("\r\n");
+    }
+
+    try ctx.res.finish();
 }
