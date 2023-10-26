@@ -88,19 +88,38 @@ fn postData(ctx: *zin.Context) !void {
 
 fn readData(ctx: *zin.Context) !void {
     var name = ctx.params.get("name").?;
+
+    // fetch table header
+    var tdef = try store.?.getTable(name);
+    if (tdef == null) {
+        try ctx.err(std.http.Status.not_found, "table not found");
+        return;
+    }
+
     var it = try store.?.scanRows(name);
     defer it.deinit();
 
     ctx.res.transfer_encoding = .chunked;
-
     try ctx.res.headers.append("Content-Type", "text/csv");
-
     try ctx.res.do();
 
     var w = ctx.res.writer();
+
+    // write header
+    var cols = tdef.?.value.columns;
+    for (0..cols.len) |i| {
+        try w.writeAll(cols[i]);
+        if (i < (cols.len - 1)) {
+            try w.writeByte(',');
+        } else {
+            try w.writeByte('\n');
+        }
+    }
+
+    // write rows
     while (it.next()) |row| {
         try w.writeAll(row);
-        try w.writeAll("\r\n");
+        try w.writeByte('\n');
     }
 
     try ctx.res.finish();
