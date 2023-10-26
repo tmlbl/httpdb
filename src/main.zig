@@ -21,7 +21,10 @@ pub fn main() !void {
     try app.post("/tables/:name", postData);
     try app.get("/tables/:name", readData);
 
-    store = try Store.init(.{ .dirname = "/tmp/csvd", .allocator = gpa.allocator() });
+    store = try Store.init(.{
+        .dirname = "/tmp/csvd",
+        .allocator = gpa.allocator(),
+    });
 
     try app.listen();
 }
@@ -33,7 +36,11 @@ fn version(ctx: *zin.Context) !void {
 fn postData(ctx: *zin.Context) !void {
     var name = ctx.params.get("name").?;
     var r = ctx.res.reader();
-    var header = try r.readUntilDelimiterAlloc(ctx.allocator(), '\n', max_row_size);
+    var header = try r.readUntilDelimiterAlloc(
+        ctx.allocator(),
+        '\n',
+        max_row_size,
+    );
 
     // create table if not exists
     if (try store.?.getTable(name) == null) {

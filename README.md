@@ -13,3 +13,31 @@ data between `csvd` and other data systems is trivial, so it can also be useful
 as a staging area for experimentation when used alongside a more full-featured
 OLAP system.
 
+# Usage
+
+```python
+import pandas as pd
+import numpy as np
+import requests
+
+my_data = pd.DataFrame(
+    np.random.randn(100000, 1),
+    columns=["value"],
+    index=pd.date_range("20130101", periods=100000, freq="T"),
+)
+
+print('writing data...')
+requests.post('http://localhost:3737/tables/example', my_data.to_csv(header=True))
+
+print('reading data...')
+df = pd.read_csv('http://localhost:3737/tables/example')
+print(df)
+```
+
+# TODO
+
+* make sure rocksdb is cleaning up
+* load testing and identify bottlenecks
+    * buffer pool to write larger memory blocks to responses
+* implement range queries
+* implement memory cache
