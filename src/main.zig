@@ -123,11 +123,17 @@ fn readData(ctx: *zin.Context) !void {
         }
     }
 
+    var bw = std.io.BufferedWriter(std.mem.page_size, @TypeOf(w)){
+        .unbuffered_writer = w,
+    };
+
     // write rows
     while (it.next()) |row| {
-        try w.writeAll(row);
-        try w.writeByte('\n');
+        _ = try bw.write(row);
+        _ = try bw.write(&[1]u8{'\n'});
     }
+
+    try bw.flush();
 
     try ctx.res.finish();
 }

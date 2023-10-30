@@ -28,7 +28,11 @@ pub const RowIter = struct {
     first: bool = true,
     prefix: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator, db: *rdb.rocksdb_t, prefix: []const u8) !RowIter {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        db: *rdb.rocksdb_t,
+        prefix: []const u8,
+    ) !RowIter {
         var readOpts = rdb.rocksdb_readoptions_create();
         var iter = rdb.rocksdb_create_iterator(db, readOpts);
         if (iter == null) {
