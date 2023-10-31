@@ -67,7 +67,7 @@ fn postData(ctx: *zin.Context) !void {
     var it = std.mem.split(u8, header, ",");
     while (it.next()) |col| {
         if (!std.mem.eql(u8, col, def.columns[i])) {
-            try ctx.err(.bad_request, try std.fmt.allocPrint(
+            try ctx.statusText(.bad_request, try std.fmt.allocPrint(
                 ctx.allocator(),
                 "unexpected column: {s}",
                 .{col},
@@ -99,7 +99,7 @@ fn readData(ctx: *zin.Context) !void {
     // fetch table header
     var tdef = try store.?.getTable(name);
     if (tdef == null) {
-        try ctx.err(std.http.Status.not_found, "table not found");
+        try ctx.statusText(std.http.Status.not_found, "table not found");
         return;
     }
 
@@ -108,7 +108,7 @@ fn readData(ctx: *zin.Context) !void {
 
     ctx.res.transfer_encoding = .chunked;
     try ctx.res.headers.append("Content-Type", "text/csv");
-    try ctx.res.do();
+    try ctx.res.send();
 
     var w = ctx.res.writer();
 
