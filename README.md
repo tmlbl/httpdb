@@ -36,8 +36,13 @@ print(df)
 
 # TODO
 
-* make sure rocksdb is cleaning up
-* load testing and identify bottlenecks
-    * buffer pool to write larger memory blocks to responses
+## Features for Sifter
+
+* implement list tables
+* implement tagging create/delete
+
+## Nice to Have
+
 * implement range queries
+* implement delete rows
 * implement memory cache

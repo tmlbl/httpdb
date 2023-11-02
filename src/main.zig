@@ -16,6 +16,8 @@ pub fn main() !void {
     var app = try zin.App.init(.{
         .allocator = gpa.allocator(),
     });
+    defer app.deinit();
+
     try app.get("/version", version);
 
     try app.post("/tables/:name", postData);
@@ -25,6 +27,7 @@ pub fn main() !void {
         .dirname = "/tmp/csvd",
         .allocator = gpa.allocator(),
     });
+    defer store.?.deinit();
 
     try app.listen();
 }

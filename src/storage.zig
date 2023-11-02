@@ -50,6 +50,7 @@ pub const RowIter = struct {
 
     pub fn deinit(self: *RowIter) void {
         self.allocator.free(self.prefix);
+        rdb.rocksdb_iter_destroy(self.it);
     }
 
     pub fn next(self: *RowIter) ?[]const u8 {
@@ -96,6 +97,10 @@ pub const Store = struct {
 
         std.log.info("opened rocksdb database: {s}", .{opts.dirname});
         return Store{ .db = db.?, .allocator = opts.allocator };
+    }
+
+    pub fn deinit(self: *Store) void {
+        rdb.rocksdb_close(self.db);
     }
 
     fn tableKey(self: *Store, name: []const u8) ![]const u8 {
