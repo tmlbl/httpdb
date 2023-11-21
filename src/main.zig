@@ -37,9 +37,9 @@ fn version(ctx: *zin.Context) !void {
 }
 
 fn postData(ctx: *zin.Context) !void {
-    var name = ctx.params.get("name").?;
+    const name = ctx.params.get("name").?;
     var r = ctx.res.reader();
-    var header = try r.readUntilDelimiterAlloc(
+    const header = try r.readUntilDelimiterAlloc(
         ctx.allocator(),
         '\n',
         max_row_size,
@@ -47,7 +47,7 @@ fn postData(ctx: *zin.Context) !void {
 
     // create table if not exists
     if (try store.?.getTable(name) == null) {
-        var ncols = std.mem.count(u8, header, ",") + 1;
+        const ncols = std.mem.count(u8, header, ",") + 1;
         var ndef = try ctx.allocator().create(storage.TableDef);
         ndef.name = name;
         var columns = try ctx.allocator().alloc([]const u8, ncols);
@@ -63,8 +63,8 @@ fn postData(ctx: *zin.Context) !void {
     }
 
     // fetch table def and verify header
-    var p = try store.?.getTable(name);
-    var def = p.?.value;
+    const p = try store.?.getTable(name);
+    const def = p.?.value;
 
     var i: usize = 0;
     var it = std.mem.split(u8, header, ",");
@@ -81,9 +81,9 @@ fn postData(ctx: *zin.Context) !void {
     }
 
     // write rows
-    var buf = try ctx.allocator().alloc(u8, max_row_size);
+    const buf = try ctx.allocator().alloc(u8, max_row_size);
     while (true) {
-        var row = r.readUntilDelimiter(buf, '\n') catch |err| {
+        const row = r.readUntilDelimiter(buf, '\n') catch |err| {
             if (err == error.EndOfStream) {
                 break;
             } else {
@@ -97,10 +97,10 @@ fn postData(ctx: *zin.Context) !void {
 }
 
 fn readData(ctx: *zin.Context) !void {
-    var name = ctx.params.get("name").?;
+    const name = ctx.params.get("name").?;
 
     // fetch table header
-    var tdef = try store.?.getTable(name);
+    const tdef = try store.?.getTable(name);
     if (tdef == null) {
         try ctx.statusText(std.http.Status.not_found, "table not found");
         return;
@@ -116,7 +116,7 @@ fn readData(ctx: *zin.Context) !void {
     var w = ctx.res.writer();
 
     // write header
-    var cols = tdef.?.value.columns;
+    const cols = tdef.?.value.columns;
     for (0..cols.len) |i| {
         try w.writeAll(cols[i]);
         if (i < (cols.len - 1)) {

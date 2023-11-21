@@ -33,13 +33,13 @@ pub const RowIter = struct {
         db: *rdb.rocksdb_t,
         prefix: []const u8,
     ) !RowIter {
-        var readOpts = rdb.rocksdb_readoptions_create();
-        var iter = rdb.rocksdb_create_iterator(db, readOpts);
+        const readOpts = rdb.rocksdb_readoptions_create();
+        const iter = rdb.rocksdb_create_iterator(db, readOpts);
         if (iter == null) {
             return error.CouldNotCreateIterator;
         }
         rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
-        var ownedPrefix = try allocator.alloc(u8, prefix.len);
+        const ownedPrefix = try allocator.alloc(u8, prefix.len);
         std.mem.copy(u8, ownedPrefix, prefix);
         return RowIter{
             .allocator = allocator,
@@ -80,17 +80,17 @@ pub const Store = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(opts: Options) !Store {
-        var options: ?*rdb.rocksdb_options_t = rdb.rocksdb_options_create();
+        const options: ?*rdb.rocksdb_options_t = rdb.rocksdb_options_create();
         rdb.rocksdb_options_set_create_if_missing(options, 1);
 
         var err: ?[*:0]u8 = null;
-        var db: ?*rdb.rocksdb_t = rdb.rocksdb_open(
+        const db: ?*rdb.rocksdb_t = rdb.rocksdb_open(
             options,
             opts.dirname.ptr,
             &err,
         );
         if (err) |ptr| {
-            var str = std.mem.span(ptr);
+            const str = std.mem.span(ptr);
             std.debug.print("ERRR {s}\n", .{str});
             return error.AnyError;
         }
@@ -112,7 +112,7 @@ pub const Store = struct {
     }
 
     pub fn createTable(self: *Store, def: *TableDef) !void {
-        var key = try self.tableKey(def.name);
+        const key = try self.tableKey(def.name);
         defer self.allocator.free(key);
 
         // check if exists
@@ -122,14 +122,14 @@ pub const Store = struct {
             return error.AlreadyExists;
         }
 
-        var data = try std.json.stringifyAlloc(
+        const data = try std.json.stringifyAlloc(
             self.allocator,
             def,
             .{},
         );
         defer self.allocator.free(data);
 
-        var writeOpts = rdb.rocksdb_writeoptions_create();
+        const writeOpts = rdb.rocksdb_writeoptions_create();
         var err: ?[*:0]u8 = null;
         rdb.rocksdb_put(
             self.db,
@@ -141,17 +141,17 @@ pub const Store = struct {
             &err,
         );
         if (err) |ptr| {
-            var str = std.mem.span(ptr);
+            const str = std.mem.span(ptr);
             std.log.err("writing table definition: {s}", .{str});
             return error.Cerror;
         }
     }
 
     pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(TableDef) {
-        var key = try self.tableKey(name);
+        const key = try self.tableKey(name);
         defer self.allocator.free(key);
 
-        var readOptions = rdb.rocksdb_readoptions_create();
+        const readOptions = rdb.rocksdb_readoptions_create();
         var valueLength: usize = 0;
         var err: ?[*:0]u8 = null;
 
@@ -164,7 +164,7 @@ pub const Store = struct {
             &err,
         );
         if (err) |ptr| {
-            var str = std.mem.span(ptr);
+            const str = std.mem.span(ptr);
             std.log.err("reading table definition: {s}", .{str});
             return error.Cerror;
         }
@@ -193,11 +193,11 @@ pub const Store = struct {
             // tables with only one row will have no comma
             cix = data.len;
         }
-        var pkey = data[0..cix.?];
-        var key = try self.rowKey(table, pkey);
+        const pkey = data[0..cix.?];
+        const key = try self.rowKey(table, pkey);
         defer self.allocator.free(key);
 
-        var writeOpts = rdb.rocksdb_writeoptions_create();
+        const writeOpts = rdb.rocksdb_writeoptions_create();
         var err: ?[*:0]u8 = null;
         rdb.rocksdb_put(
             self.db,
@@ -209,14 +209,14 @@ pub const Store = struct {
             &err,
         );
         if (err) |ptr| {
-            var str = std.mem.span(ptr);
+            const str = std.mem.span(ptr);
             std.log.err("writing row: {s}", .{str});
             return error.Cerror;
         }
     }
 
     pub fn scanRows(self: *Store, table: []const u8) !RowIter {
-        var prefix = try self.rowKey(table, "");
+        const prefix = try self.rowKey(table, "");
         defer self.allocator.free(prefix);
         return RowIter.init(
             self.allocator,
@@ -234,7 +234,7 @@ const TestDB = struct {
     dirname: [:0]u8,
 
     pub fn init() !TestDB {
-        var dn = try utils.tempDir(t.allocator, "csvd-test-store");
+        const dn = try utils.tempDir(t.allocator, "csvd-test-store");
         return TestDB{
             .s = try Store.init(.{
                 .allocator = t.allocator,
@@ -266,7 +266,7 @@ test "table defs" {
     // fetch it back from disk
     var fetched = try td.s.getTable(table.name);
     defer fetched.?.deinit();
-    var ftable = fetched.?.value;
+    const ftable = fetched.?.value;
 
     try t.expect(std.mem.eql(u8, ftable.name, table.name));
     try t.expect(ftable.columns.len == table.columns.len);
