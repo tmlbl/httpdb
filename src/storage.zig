@@ -283,6 +283,7 @@ test "scan rows" {
     try td.s.writeRow("foo", "baz");
 
     var it = try td.s.scanRows("foo");
+    defer it.deinit();
     while (it.next()) |row| {
         std.debug.print("scanned row: {s}\n", .{row});
     }
