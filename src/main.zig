@@ -20,6 +20,7 @@ pub fn main() !void {
 
     try app.get("/version", version);
 
+    try app.get("/tables", listTables);
     try app.post("/tables/:name", postData);
     try app.get("/tables/:name", readData);
 
@@ -34,6 +35,34 @@ pub fn main() !void {
 
 fn version(ctx: *zin.Context) !void {
     try ctx.text("v0.0.1");
+}
+
+fn listTables(ctx: *zin.Context) !void {
+    ctx.res.transfer_encoding = .chunked;
+    try ctx.res.headers.append("Content-Type", "text/csv");
+    try ctx.res.send();
+
+    // write header
+    var w = ctx.res.writer();
+    try w.writeAll("name,columns\n");
+
+    var it = try store.?.scanDefinitions();
+    while (it.next()) |data| {
+        const parsed = try std.json.parseFromSlice(storage.TableDef, ctx.allocator(), data, .{});
+        try w.writeAll(parsed.value.name);
+        try w.writeByte(',');
+
+        for (0..parsed.value.columns.len) |i| {
+            try w.writeAll(parsed.value.columns[i]);
+            if (i < parsed.value.columns.len - 1) {
+                try w.writeByte('|');
+            }
+        }
+
+        try w.writeByte('\n');
+    }
+
+    try ctx.res.finish();
 }
 
 fn postData(ctx: *zin.Context) !void {

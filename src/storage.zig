@@ -224,6 +224,16 @@ pub const Store = struct {
             prefix,
         );
     }
+
+    pub fn scanDefinitions(self: *Store) !RowIter {
+        const prefix = try self.tableKey("");
+        defer self.allocator.free(prefix);
+        return RowIter.init(
+            self.allocator,
+            self.db,
+            prefix,
+        );
+    }
 };
 
 const utils = @import("./utils.zig");
