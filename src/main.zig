@@ -25,7 +25,7 @@ pub fn main() !void {
     try app.get("/tables/:name", readData);
 
     store = try Store.init(.{
-        .dirname = "/tmp/csvd",
+        .dirname = "/tmp/httpdb",
         .allocator = gpa.allocator(),
     });
     defer store.?.deinit();
@@ -48,7 +48,12 @@ fn listTables(ctx: *zin.Context) !void {
 
     var it = try store.?.scanDefinitions();
     while (it.next()) |data| {
-        const parsed = try std.json.parseFromSlice(storage.TableDef, ctx.allocator(), data, .{});
+        const parsed = try std.json.parseFromSlice(
+            storage.TableDef,
+            ctx.allocator(),
+            data,
+            .{},
+        );
         try w.writeAll(parsed.value.name);
         try w.writeByte(',');
 

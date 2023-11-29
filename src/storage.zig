@@ -74,7 +74,6 @@ pub const RowIter = struct {
     }
 };
 
-// Store defines the on-disk storage system for csvd
 pub const Store = struct {
     db: *rdb.rocksdb_t,
     allocator: std.mem.Allocator,
@@ -194,6 +193,8 @@ pub const Store = struct {
             cix = data.len;
         }
         const pkey = data[0..cix.?];
+
+        // TODO: should not need to allocate here
         const key = try self.rowKey(table, pkey);
         defer self.allocator.free(key);
 
@@ -244,7 +245,7 @@ const TestDB = struct {
     dirname: [:0]u8,
 
     pub fn init() !TestDB {
-        const dn = try utils.tempDir(t.allocator, "csvd-test-store");
+        const dn = try utils.tempDir(t.allocator, "test-store");
         return TestDB{
             .s = try Store.init(.{
                 .allocator = t.allocator,

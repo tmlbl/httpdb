@@ -1,48 +1,19 @@
-csvd
-====
+httpdb
+======
 
-`csvd` is a super-simple HTTP 1.1-based data system for reading and writing data
-in the CSV format. It supports lexicographical ordering of rows based on a
-primary key column and basic range queries, and can be used with any tool that
-can load a CSV file over a network.
+`httpdb` is a database system focused on ease of use. Data is written and
+queried using only HTTP requests with standard REST verbs and query strings, and
+is returned in CSV or JSON format as specified by HTTP headers. Tables are
+created automatically when data is written, and the table schema is inferred
+from the shape of the input data. As such, `httpdb` can be integrated into
+projects incredibly quickly in any programming language, while offering a
+powerful storage backend and flexible query engine.
 
-It is designed for small or medium-scale analytics workloads to ingest, catalog
-and serve tabular data to many clients simultaneously, without requiring any
-client code. Also, due to the portability of HTTP and the CSV format, moving 
-data between `csvd` and other data systems is trivial, so it can also be useful
-as a staging area for experimentation when used alongside a more full-featured
-OLAP system.
+## TODO
 
-# Usage
-
-```python
-import pandas as pd
-import numpy as np
-import requests
-
-my_data = pd.DataFrame(
-    np.random.randn(100000, 1),
-    columns=["value"],
-    index=pd.date_range("20130101", periods=100000, freq="T"),
-)
-
-print('writing data...')
-requests.post('http://localhost:3737/tables/example', my_data.to_csv(header=True))
-
-print('reading data...')
-df = pd.read_csv('http://localhost:3737/tables/example')
-print(df)
-```
-
-# TODO
-
-## Features for Sifter
-
-* implement list tables
-* implement tagging create/delete
-
-## Nice to Have
-
-* implement range queries
-* implement delete rows
-* implement memory cache
+* Add license
+* Table tagging
+* CSV querying
+* FSM
+* JSON data
+* HTML/XML data
