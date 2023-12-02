@@ -23,6 +23,7 @@ pub fn main() !void {
     try app.get("/tables", listTables);
     try app.post("/tables/:name", postData);
     try app.get("/tables/:name", readData);
+    try app.delete("/tables/:name", deleteData);
 
     store = try Store.init(.{
         .dirname = "/tmp/httpdb",
@@ -173,4 +174,10 @@ fn readData(ctx: *zin.Context) !void {
     try bw.flush();
 
     try ctx.res.finish();
+}
+
+fn deleteData(ctx: *zin.Context) !void {
+    const name = ctx.params.get("name").?;
+    try store.?.deleteTable(name);
+    try ctx.text("table deleted");
 }

@@ -235,6 +235,52 @@ pub const Store = struct {
             prefix,
         );
     }
+
+    pub fn deleteTable(self: *Store, table: []const u8) !void {
+        const prefix = try self.rowKey(table, "");
+        defer self.allocator.free(prefix);
+
+        const readOpts = rdb.rocksdb_readoptions_create();
+        const iter = rdb.rocksdb_create_iterator(self.db, readOpts);
+        if (iter == null) {
+            return error.CouldNotCreateIterator;
+        }
+        rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
+
+        var first = true;
+        while (rdb.rocksdb_iter_valid(iter) == 1) {
+            if (!first) {
+                rdb.rocksdb_iter_next(iter);
+            }
+            first = false;
+
+            var keySize: usize = 0;
+            var rawKey = rdb.rocksdb_iter_key(iter, &keySize);
+            if (!std.mem.startsWith(u8, rawKey[0..keySize], prefix)) {
+                break;
+            }
+
+            const writeOpts = rdb.rocksdb_writeoptions_create();
+            var err: ?[*:0]u8 = null;
+            rdb.rocksdb_delete(self.db, writeOpts, rawKey, keySize, &err);
+            if (err) |ptr| {
+                const str = std.mem.span(ptr);
+                std.log.err("deleting row: {s}", .{str});
+                return error.Cerror;
+            }
+        }
+        rdb.rocksdb_iter_destroy(iter);
+
+        const defKey = try self.tableKey(table);
+        const writeOpts = rdb.rocksdb_writeoptions_create();
+        var err: ?[*:0]u8 = null;
+        rdb.rocksdb_delete(self.db, writeOpts, defKey.ptr, defKey.len, &err);
+        if (err) |ptr| {
+            const str = std.mem.span(ptr);
+            std.log.err("deleting row: {s}", .{str});
+            return error.Cerror;
+        }
+    }
 };
 
 const utils = @import("./utils.zig");
