@@ -2,6 +2,7 @@ const std = @import("std");
 const zin = @import("zinatra");
 
 const storage = @import("./storage.zig");
+const Schema = @import("./schema.zig");
 const Store = storage.Store;
 
 const max_row_size = 4096;
@@ -38,19 +39,56 @@ fn version(ctx: *zin.Context) !void {
     try ctx.text("v0.0.1");
 }
 
+fn listTablesJSON(ctx: *zin.Context) !void {
+    ctx.res.transfer_encoding = .chunked;
+    try ctx.res.headers.append("Content-Type", "application/json");
+    try ctx.res.send();
+
+    var w = ctx.res.writer();
+    try w.writeByte('[');
+
+    var it = try store.?.scanDefinitions();
+    var first = true;
+    while (it.next()) |data| {
+        if (!first) {
+            try w.writeByte(',');
+        }
+        try w.writeAll(data);
+        first = false;
+    }
+
+    try w.writeByte(']');
+    try ctx.res.finish();
+}
+
 fn listTables(ctx: *zin.Context) !void {
+    const accept = ctx.req.headers.getFirstEntry("Accept");
+    if (accept != null) {
+        if (std.mem.eql(u8, accept.?.value, "application/json")) {
+            return listTablesJSON(ctx);
+        } else if (!std.mem.eql(u8, accept.?.value, "text/csv")) {
+            if (!std.mem.eql(u8, accept.?.value, "*/*")) {
+                try ctx.statusText(
+                    std.http.Status.bad_request,
+                    "unsupported accept header",
+                );
+                return;
+            }
+        }
+    }
+
     ctx.res.transfer_encoding = .chunked;
     try ctx.res.headers.append("Content-Type", "text/csv");
     try ctx.res.send();
 
     // write header
     var w = ctx.res.writer();
-    try w.writeAll("name,columns\n");
+    try w.writeAll("name,columns,dataType\n");
 
     var it = try store.?.scanDefinitions();
     while (it.next()) |data| {
         const parsed = try std.json.parseFromSlice(
-            storage.TableDef,
+            Schema,
             ctx.allocator(),
             data,
             .{},
@@ -64,6 +102,9 @@ fn listTables(ctx: *zin.Context) !void {
                 try w.writeByte('|');
             }
         }
+        try w.writeByte(',');
+
+        try w.writeAll(@tagName(parsed.value.dataType));
 
         try w.writeByte('\n');
     }
@@ -83,8 +124,8 @@ fn postData(ctx: *zin.Context) !void {
     // create table if not exists
     if (try store.?.getTable(name) == null) {
         const ncols = std.mem.count(u8, header, ",") + 1;
-        var ndef = try ctx.allocator().create(storage.TableDef);
-        ndef.name = name;
+        var schema = try ctx.allocator().create(Schema);
+        schema.name = name;
         var columns = try ctx.allocator().alloc([]const u8, ncols);
         var i: usize = 0;
         var it = std.mem.split(u8, header, ",");
@@ -92,9 +133,9 @@ fn postData(ctx: *zin.Context) !void {
             columns[i] = col;
             i += 1;
         }
-        ndef.columns = columns;
-        try store.?.createTable(ndef);
-        std.log.debug("created table {s}", .{ndef.name});
+        schema.columns = columns;
+        try store.?.createTable(schema);
+        std.log.debug("created table {s}", .{schema.name});
     }
 
     // fetch table def and verify header

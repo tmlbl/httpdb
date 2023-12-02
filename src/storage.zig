@@ -1,20 +1,10 @@
 const std = @import("std");
+const Schema = @import("./schema.zig");
 const rdb = @cImport(@cInclude("rocksdb/c.h"));
-
-// supported data types for values
-pub const DataType = enum {
-    float32,
-    float64,
-};
 
 pub const Options = struct {
     allocator: std.mem.Allocator,
     dirname: []const u8,
-};
-
-pub const TableDef = struct {
-    name: []const u8,
-    columns: []const []const u8,
 };
 
 pub const ScanOptions = struct {
@@ -110,12 +100,12 @@ pub const Store = struct {
         );
     }
 
-    pub fn createTable(self: *Store, def: *TableDef) !void {
-        const key = try self.tableKey(def.name);
+    pub fn createTable(self: *Store, schema: *Schema) !void {
+        const key = try self.tableKey(schema.name);
         defer self.allocator.free(key);
 
         // check if exists
-        var td = try self.getTable(def.name);
+        var td = try self.getTable(schema.name);
         if (td != null) {
             td.?.deinit();
             return error.AlreadyExists;
@@ -123,7 +113,7 @@ pub const Store = struct {
 
         const data = try std.json.stringifyAlloc(
             self.allocator,
-            def,
+            schema,
             .{},
         );
         defer self.allocator.free(data);
@@ -146,7 +136,7 @@ pub const Store = struct {
         }
     }
 
-    pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(TableDef) {
+    pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(Schema) {
         const key = try self.tableKey(name);
         defer self.allocator.free(key);
 
@@ -171,7 +161,7 @@ pub const Store = struct {
             return null;
         }
         return try std.json.parseFromSlice(
-            TableDef,
+            Schema,
             self.allocator,
             v[0..valueLength],
             .{},
@@ -312,8 +302,9 @@ test "table defs" {
     var td = try TestDB.init();
     defer td.deinit();
 
-    var table = TableDef{
+    var table = Schema{
         .name = "my_table",
+        .dataType = Schema.DataType.csv,
         .columns = &[_][]const u8{ "foo", "bar" },
     };
 
