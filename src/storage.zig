@@ -30,7 +30,7 @@ pub const RowIter = struct {
         }
         rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
         const ownedPrefix = try allocator.alloc(u8, prefix.len);
-        std.mem.copy(u8, ownedPrefix, prefix);
+        std.mem.copyForwards(u8, ownedPrefix, prefix);
         return RowIter{
             .allocator = allocator,
             .it = iter.?,
@@ -64,6 +64,105 @@ pub const RowIter = struct {
     }
 };
 
+pub const SchemaIter = struct {
+    db: *rdb.rocksdb_t,
+    allocator: std.mem.Allocator,
+    it: *rdb.rocksdb_iterator_t,
+    first: bool = true,
+    prefix: []const u8,
+    isTagIterator: bool,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        db: *rdb.rocksdb_t,
+        tag: ?[]const u8,
+    ) !SchemaIter {
+        const readOpts = rdb.rocksdb_readoptions_create();
+        const iter = rdb.rocksdb_create_iterator(db, readOpts);
+        if (iter == null) {
+            return error.CouldNotCreateIterator;
+        }
+
+        const isTag = tag != null;
+        var prefix: []u8 = "";
+        if (isTag) {
+            prefix = try std.fmt.allocPrint(allocator, "tag:{s}:", .{tag.?});
+        } else {
+            prefix = try std.fmt.allocPrint(allocator, "table_def:", .{});
+        }
+        rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
+        return SchemaIter{
+            .db = db,
+            .allocator = allocator,
+            .it = iter.?,
+            .prefix = prefix,
+            .isTagIterator = isTag,
+        };
+    }
+
+    pub fn deinit(self: *SchemaIter) void {
+        self.allocator.free(self.prefix);
+        rdb.rocksdb_iter_destroy(self.it);
+    }
+
+    pub fn next(self: *SchemaIter) ?[]const u8 {
+        if (!self.first) {
+            rdb.rocksdb_iter_next(self.it);
+        }
+        self.first = false;
+        if (rdb.rocksdb_iter_valid(self.it) != 1) {
+            return null;
+        }
+
+        var keySize: usize = 0;
+        var rawKey = rdb.rocksdb_iter_key(self.it, &keySize);
+        if (!std.mem.startsWith(u8, rawKey[0..keySize], self.prefix)) {
+            return null;
+        }
+
+        var valueSize: usize = 0;
+        var rawValue = rdb.rocksdb_iter_value(self.it, &valueSize);
+
+        if (!self.isTagIterator) {
+            return rawValue[0..valueSize];
+        } else {
+            // fetch the actual table schema
+            const readOptions = rdb.rocksdb_readoptions_create();
+            var valueLength: usize = 0;
+            var err: ?[*:0]u8 = null;
+
+            const tableName = rawValue[0..valueSize];
+            const key = std.fmt.allocPrint(
+                self.allocator,
+                "table_def:{s}",
+                .{tableName},
+            ) catch |e| {
+                std.log.err("{any}", .{e});
+                return null;
+            };
+            defer self.allocator.free(key);
+
+            var v = rdb.rocksdb_get(
+                self.db,
+                readOptions,
+                key.ptr,
+                key.len,
+                &valueLength,
+                &err,
+            );
+            if (err) |ptr| {
+                const str = std.mem.span(ptr);
+                std.log.err("reading table definition: {s}", .{str});
+                return null;
+            }
+            if (v == null) {
+                return null;
+            }
+            return v[0..valueLength];
+        }
+    }
+};
+
 pub const Store = struct {
     db: *rdb.rocksdb_t,
     allocator: std.mem.Allocator,
@@ -92,11 +191,49 @@ pub const Store = struct {
         rdb.rocksdb_close(self.db);
     }
 
+    pub fn put(self: *Store, key: []const u8, value: []const u8) !void {
+        const writeOpts = rdb.rocksdb_writeoptions_create();
+        var err: ?[*:0]u8 = null;
+        rdb.rocksdb_put(
+            self.db,
+            writeOpts,
+            key.ptr,
+            key.len,
+            value.ptr,
+            value.len,
+            &err,
+        );
+        if (err) |ptr| {
+            const str = std.mem.span(ptr);
+            std.log.err("writing table definition: {s}", .{str});
+            return error.Cerror;
+        }
+    }
+
+    pub fn delete(self: *Store, key: []const u8) !void {
+        const writeOpts = rdb.rocksdb_writeoptions_create();
+        var err: ?[*:0]u8 = null;
+        rdb.rocksdb_delete(self.db, writeOpts, key.ptr, key.len, &err);
+        if (err) |ptr| {
+            const str = std.mem.span(ptr);
+            std.log.err("deleting row: {s}", .{str});
+            return error.Cerror;
+        }
+    }
+
     fn tableKey(self: *Store, name: []const u8) ![]const u8 {
         return std.fmt.allocPrint(
             self.allocator,
             "table_def:{s}",
             .{name},
+        );
+    }
+
+    fn tagKey(self: *Store, tag: []const u8, table: []const u8) ![]const u8 {
+        return std.fmt.allocPrint(
+            self.allocator,
+            "tag:{s}:{s}",
+            .{ tag, table },
         );
     }
 
@@ -118,22 +255,7 @@ pub const Store = struct {
         );
         defer self.allocator.free(data);
 
-        const writeOpts = rdb.rocksdb_writeoptions_create();
-        var err: ?[*:0]u8 = null;
-        rdb.rocksdb_put(
-            self.db,
-            writeOpts,
-            key.ptr,
-            key.len,
-            data.ptr,
-            data.len,
-            &err,
-        );
-        if (err) |ptr| {
-            const str = std.mem.span(ptr);
-            std.log.err("writing table definition: {s}", .{str});
-            return error.Cerror;
-        }
+        try self.put(key, data);
     }
 
     pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(Schema) {
@@ -168,6 +290,13 @@ pub const Store = struct {
         );
     }
 
+    pub fn tagTable(self: *Store, table: []const u8, tag: []const u8) !void {
+        const key = try self.tagKey(tag, table);
+        defer self.allocator.free(key);
+
+        try self.put(key, table);
+    }
+
     fn rowKey(self: *Store, table: []const u8, pkey: []const u8) ![]const u8 {
         return std.fmt.allocPrint(
             self.allocator,
@@ -188,22 +317,7 @@ pub const Store = struct {
         const key = try self.rowKey(table, pkey);
         defer self.allocator.free(key);
 
-        const writeOpts = rdb.rocksdb_writeoptions_create();
-        var err: ?[*:0]u8 = null;
-        rdb.rocksdb_put(
-            self.db,
-            writeOpts,
-            key.ptr,
-            key.len,
-            data.ptr,
-            data.len,
-            &err,
-        );
-        if (err) |ptr| {
-            const str = std.mem.span(ptr);
-            std.log.err("writing row: {s}", .{str});
-            return error.Cerror;
-        }
+        try self.put(key, data);
     }
 
     pub fn scanRows(self: *Store, table: []const u8) !RowIter {
@@ -216,8 +330,8 @@ pub const Store = struct {
         );
     }
 
-    pub fn scanDefinitions(self: *Store) !RowIter {
-        const prefix = try self.tableKey("");
+    pub fn scanTag(self: *Store, tag: []const u8) !RowIter {
+        const prefix = try self.tagKey(tag, "");
         defer self.allocator.free(prefix);
         return RowIter.init(
             self.allocator,
@@ -262,14 +376,8 @@ pub const Store = struct {
         rdb.rocksdb_iter_destroy(iter);
 
         const defKey = try self.tableKey(table);
-        const writeOpts = rdb.rocksdb_writeoptions_create();
-        var err: ?[*:0]u8 = null;
-        rdb.rocksdb_delete(self.db, writeOpts, defKey.ptr, defKey.len, &err);
-        if (err) |ptr| {
-            const str = std.mem.span(ptr);
-            std.log.err("deleting row: {s}", .{str});
-            return error.Cerror;
-        }
+        try self.delete(defKey);
+        self.allocator.free(defKey);
     }
 };
 
@@ -321,6 +429,10 @@ test "table defs" {
     for (0..table.columns.len) |i| {
         try t.expect(std.mem.eql(u8, table.columns[i], ftable.columns[i]));
     }
+
+    // delete table
+    try td.s.deleteTable(table.name);
+    try std.testing.expect((try td.s.getTable(table.name)) == null);
 }
 
 test "scan rows" {
@@ -333,6 +445,38 @@ test "scan rows" {
     var it = try td.s.scanRows("foo");
     defer it.deinit();
     while (it.next()) |row| {
-        std.debug.print("scanned row: {s}\n", .{row});
+        try std.testing.expect(std.mem.startsWith(u8, row, "ba"));
     }
+}
+
+test "tagged tables" {
+    var td = try TestDB.init();
+    defer td.deinit();
+
+    var a = Schema{
+        .name = "table_a",
+        .dataType = Schema.DataType.csv,
+        .columns = &[_][]const u8{ "foo", "bar" },
+    };
+
+    var b = Schema{
+        .name = "table_b",
+        .dataType = Schema.DataType.csv,
+        .columns = &[_][]const u8{ "foo", "bar" },
+    };
+
+    try td.s.createTable(&a);
+    try td.s.createTable(&b);
+
+    try td.s.tagTable(a.name, "foo");
+
+    var it = try SchemaIter.init(std.testing.allocator, td.s.db, "foo");
+    defer it.deinit();
+    var count: usize = 0;
+    while (it.next()) |schema| {
+        const containsName = std.mem.containsAtLeast(u8, schema, 1, "table_a");
+        try std.testing.expect(containsName);
+        count += 1;
+    }
+    try std.testing.expect(count == 1);
 }

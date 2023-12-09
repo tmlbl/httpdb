@@ -21,10 +21,13 @@ pub fn main() !void {
 
     try app.get("/version", version);
 
-    try app.get("/tables", listTables);
+    try app.get("/tables", listTablesAll);
     try app.post("/tables/:name", postData);
     try app.get("/tables/:name", readData);
     try app.delete("/tables/:name", deleteData);
+
+    try app.post("/tables/:name/tags/:tag", tagTable);
+    try app.get("/tags/:tag", listTagTables);
 
     store = try Store.init(.{
         .dirname = "/tmp/httpdb",
@@ -39,15 +42,41 @@ fn version(ctx: *zin.Context) !void {
     try ctx.text("v0.0.1");
 }
 
-fn listTablesJSON(ctx: *zin.Context) !void {
+fn tagTable(ctx: *zin.Context) !void {
+    const name = ctx.params.get("name").?;
+    const tag = ctx.params.get("tag").?;
+
+    try store.?.tagTable(name, tag);
+
+    try ctx.text("added tag");
+}
+
+fn listTablesAll(ctx: *zin.Context) !void {
+    return listTables(ctx, null);
+}
+
+fn listTagTables(ctx: *zin.Context) !void {
+    const tag = ctx.params.get("tag").?;
+    return listTables(ctx, tag);
+}
+
+fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
     ctx.res.transfer_encoding = .chunked;
     try ctx.res.headers.append("Content-Type", "application/json");
     try ctx.res.send();
 
+    if (tag != null) {
+        std.debug.print("listing tables for tag {s}\n", .{tag.?});
+    }
+
     var w = ctx.res.writer();
     try w.writeByte('[');
 
-    var it = try store.?.scanDefinitions();
+    var it = try storage.SchemaIter.init(
+        store.?.allocator,
+        store.?.db,
+        tag,
+    );
     var first = true;
     while (it.next()) |data| {
         if (!first) {
@@ -58,57 +87,6 @@ fn listTablesJSON(ctx: *zin.Context) !void {
     }
 
     try w.writeByte(']');
-    try ctx.res.finish();
-}
-
-fn listTables(ctx: *zin.Context) !void {
-    const accept = ctx.req.headers.getFirstEntry("Accept");
-    if (accept != null) {
-        if (std.mem.eql(u8, accept.?.value, "application/json")) {
-            return listTablesJSON(ctx);
-        } else if (!std.mem.eql(u8, accept.?.value, "text/csv")) {
-            if (!std.mem.eql(u8, accept.?.value, "*/*")) {
-                try ctx.statusText(
-                    std.http.Status.bad_request,
-                    "unsupported accept header",
-                );
-                return;
-            }
-        }
-    }
-
-    ctx.res.transfer_encoding = .chunked;
-    try ctx.res.headers.append("Content-Type", "text/csv");
-    try ctx.res.send();
-
-    // write header
-    var w = ctx.res.writer();
-    try w.writeAll("name,columns,dataType\n");
-
-    var it = try store.?.scanDefinitions();
-    while (it.next()) |data| {
-        const parsed = try std.json.parseFromSlice(
-            Schema,
-            ctx.allocator(),
-            data,
-            .{},
-        );
-        try w.writeAll(parsed.value.name);
-        try w.writeByte(',');
-
-        for (0..parsed.value.columns.len) |i| {
-            try w.writeAll(parsed.value.columns[i]);
-            if (i < parsed.value.columns.len - 1) {
-                try w.writeByte('|');
-            }
-        }
-        try w.writeByte(',');
-
-        try w.writeAll(@tagName(parsed.value.dataType));
-
-        try w.writeByte('\n');
-    }
-
     try ctx.res.finish();
 }
 
