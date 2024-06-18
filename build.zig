@@ -6,23 +6,24 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "httpdb",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = .{ .cwd_relative = "src/main.zig" },
         .target = target,
         .optimize = optimize,
     });
 
     exe.linkLibC();
-    exe.linkSystemLibraryName("rocksdb");
-    exe.addIncludePath(.{ .path = "/usr/include" });
+    exe.linkSystemLibrary("rocksdb");
+    exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
 
-    exe.addModule("zinatra", b.createModule(.{
-        .source_file = .{ .path = "./zinatra/src/App.zig" },
-    }));
+    const zinatra = b.addModule("zinatra", .{
+        .root_source_file = .{ .cwd_relative = "./zinatra/src/App.zig" },
+    });
+    exe.root_module.addImport("zinatra", zinatra);
 
     b.installArtifact(exe);
 
     const tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = .{ .cwd_relative = "src/main.zig" },
         .target = target,
         .optimize = .Debug,
     });

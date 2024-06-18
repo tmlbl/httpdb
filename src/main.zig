@@ -61,15 +61,24 @@ fn listTagTables(ctx: *zin.Context) !void {
 }
 
 fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
-    ctx.res.transfer_encoding = .chunked;
-    try ctx.res.headers.append("Content-Type", "application/json");
-    try ctx.res.send();
+    try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
 
     if (tag != null) {
         std.debug.print("listing tables for tag {s}\n", .{tag.?});
     }
 
-    var w = ctx.res.writer();
+    const buf = try ctx.allocator().alloc(u8, std.mem.page_size);
+    defer ctx.allocator().free(buf);
+
+    var response = ctx.req.respondStreaming(.{
+        .send_buffer = buf,
+        .respond_options = .{
+            .extra_headers = ctx.headers.items,
+            .transfer_encoding = .chunked,
+        },
+    });
+
+    var w = response.writer();
     try w.writeByte('[');
 
     var it = try storage.SchemaIter.init(
@@ -87,12 +96,12 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
     }
 
     try w.writeByte(']');
-    try ctx.res.finish();
+    try response.end();
 }
 
 fn postData(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
-    var r = ctx.res.reader();
+    var r = try ctx.req.reader();
     const header = try r.readUntilDelimiterAlloc(
         ctx.allocator(),
         '\n',
@@ -106,7 +115,7 @@ fn postData(ctx: *zin.Context) !void {
         schema.name = name;
         var columns = try ctx.allocator().alloc([]const u8, ncols);
         var i: usize = 0;
-        var it = std.mem.split(u8, header, ",");
+        var it = std.mem.splitAny(u8, header, ",");
         while (it.next()) |col| {
             columns[i] = col;
             i += 1;
@@ -121,7 +130,7 @@ fn postData(ctx: *zin.Context) !void {
     const def = p.?.value;
 
     var i: usize = 0;
-    var it = std.mem.split(u8, header, ",");
+    var it = std.mem.splitAny(u8, header, ",");
     while (it.next()) |col| {
         if (!std.mem.eql(u8, col, def.columns[i])) {
             try ctx.statusText(.bad_request, try std.fmt.allocPrint(
@@ -163,11 +172,20 @@ fn readData(ctx: *zin.Context) !void {
     var it = try store.?.scanRows(name);
     defer it.deinit();
 
-    ctx.res.transfer_encoding = .chunked;
-    try ctx.res.headers.append("Content-Type", "text/csv");
-    try ctx.res.send();
+    try ctx.headers.append(.{ .name = "Content-Type", .value = "text/csv" });
 
-    var w = ctx.res.writer();
+    const buf = try ctx.allocator().alloc(u8, std.mem.page_size);
+    defer ctx.allocator().free(buf);
+
+    var response = ctx.req.respondStreaming(.{
+        .send_buffer = buf,
+        .respond_options = .{
+            .extra_headers = ctx.headers.items,
+            .transfer_encoding = .chunked,
+        },
+    });
+
+    var w = response.writer();
 
     // write header
     const cols = tdef.?.value.columns;
@@ -192,7 +210,7 @@ fn readData(ctx: *zin.Context) !void {
 
     try bw.flush();
 
-    try ctx.res.finish();
+    try response.end();
 }
 
 fn deleteData(ctx: *zin.Context) !void {
