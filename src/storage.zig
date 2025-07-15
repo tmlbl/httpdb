@@ -129,7 +129,7 @@ pub const SchemaIter = struct {
             // fetch the actual table schema
             const readOptions = rdb.rocksdb_readoptions_create();
             var valueLength: usize = 0;
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
 
             const tableName = rawValue[0..valueSize];
             const key = std.fmt.allocPrint(
@@ -171,7 +171,7 @@ pub const Store = struct {
         const options: ?*rdb.rocksdb_options_t = rdb.rocksdb_options_create();
         rdb.rocksdb_options_set_create_if_missing(options, 1);
 
-        var err: ?[*:0]u8 = null;
+        var err: [*c]u8 = null;
         const db: ?*rdb.rocksdb_t = rdb.rocksdb_open(
             options,
             opts.dirname.ptr,
@@ -193,7 +193,7 @@ pub const Store = struct {
 
     pub fn put(self: *Store, key: []const u8, value: []const u8) !void {
         const writeOpts = rdb.rocksdb_writeoptions_create();
-        var err: ?[*:0]u8 = null;
+        var err: [*c]u8 = null;
         rdb.rocksdb_put(
             self.db,
             writeOpts,
@@ -212,7 +212,7 @@ pub const Store = struct {
 
     pub fn delete(self: *Store, key: []const u8) !void {
         const writeOpts = rdb.rocksdb_writeoptions_create();
-        var err: ?[*:0]u8 = null;
+        var err: [*c]u8 = null;
         rdb.rocksdb_delete(self.db, writeOpts, key.ptr, key.len, &err);
         if (err) |ptr| {
             const str = std.mem.span(ptr);
@@ -264,7 +264,7 @@ pub const Store = struct {
 
         const readOptions = rdb.rocksdb_readoptions_create();
         var valueLength: usize = 0;
-        var err: ?[*:0]u8 = null;
+        var err: [*c]u8 = null;
 
         var v = rdb.rocksdb_get(
             self.db,
@@ -365,7 +365,7 @@ pub const Store = struct {
             }
 
             const writeOpts = rdb.rocksdb_writeoptions_create();
-            var err: ?[*:0]u8 = null;
+            var err: [*c]u8 = null;
             rdb.rocksdb_delete(self.db, writeOpts, rawKey, keySize, &err);
             if (err) |ptr| {
                 const str = std.mem.span(ptr);

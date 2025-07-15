@@ -67,7 +67,7 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
         std.debug.print("listing tables for tag {s}\n", .{tag.?});
     }
 
-    const buf = try ctx.allocator().alloc(u8, std.mem.page_size);
+    const buf = try ctx.allocator().alloc(u8, max_row_size);
     defer ctx.allocator().free(buf);
 
     var response = ctx.req.respondStreaming(.{
@@ -174,7 +174,7 @@ fn readData(ctx: *zin.Context) !void {
 
     try ctx.headers.append(.{ .name = "Content-Type", .value = "text/csv" });
 
-    const buf = try ctx.allocator().alloc(u8, std.mem.page_size);
+    const buf = try ctx.allocator().alloc(u8, max_row_size);
     defer ctx.allocator().free(buf);
 
     var response = ctx.req.respondStreaming(.{
@@ -198,7 +198,7 @@ fn readData(ctx: *zin.Context) !void {
         }
     }
 
-    var bw = std.io.BufferedWriter(std.mem.page_size, @TypeOf(w)){
+    var bw = std.io.BufferedWriter(max_row_size, @TypeOf(w)){
         .unbuffered_writer = w,
     };
 
