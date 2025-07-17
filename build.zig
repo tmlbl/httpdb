@@ -28,6 +28,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .Debug,
     });
+    tests.linkLibC();
+    tests.linkSystemLibrary("rocksdb");
 
     const run_tests = b.addRunArtifact(tests);
 

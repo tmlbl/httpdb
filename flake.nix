@@ -22,13 +22,15 @@
           buildInputs = [
             pkgs.rocksdb
             pkgs.zig
+            pkgs.zls
             pkgs.pkg-config
             pkgs.clang
+            pkgs.glibc
             pkgs.lldb # optional for debugging
           ];
 
           shellHook = ''
-            export CFLAGS="-I${pkgs.rocksdb}/include"
+            export C_INCLUDE_PATH="-I${pkgs.rocksdb}/include:${pkgs.glibc.dev}/include"
             export LIBRARY_PATH="${pkgs.rocksdb}/lib"
             export LD_LIBRARY_PATH="${pkgs.rocksdb}/lib"
           '';
