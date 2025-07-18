@@ -39,7 +39,7 @@ pub fn main() !void {
 }
 
 fn version(ctx: *zin.Context) !void {
-    try ctx.text("v0.0.1");
+    try ctx.text(.ok, "v0.0.1");
 }
 
 fn tagTable(ctx: *zin.Context) !void {
@@ -48,7 +48,7 @@ fn tagTable(ctx: *zin.Context) !void {
 
     try store.?.tagTable(name, tag);
 
-    try ctx.text("added tag");
+    try ctx.text(.ok, "added tag");
 }
 
 fn listTablesAll(ctx: *zin.Context) !void {
@@ -133,7 +133,7 @@ fn postData(ctx: *zin.Context) !void {
     var it = std.mem.splitAny(u8, header, ",");
     while (it.next()) |col| {
         if (!std.mem.eql(u8, col, def.columns[i])) {
-            try ctx.statusText(.bad_request, try std.fmt.allocPrint(
+            try ctx.text(.bad_request, try std.fmt.allocPrint(
                 ctx.allocator(),
                 "unexpected column: {s}",
                 .{col},
@@ -156,7 +156,7 @@ fn postData(ctx: *zin.Context) !void {
         try store.?.writeRow(def.name, row);
     }
 
-    try ctx.text("ok");
+    try ctx.text(.ok, "ok");
 }
 
 fn readData(ctx: *zin.Context) !void {
@@ -165,7 +165,7 @@ fn readData(ctx: *zin.Context) !void {
     // fetch table header
     const tdef = try store.?.getTable(name);
     if (tdef == null) {
-        try ctx.statusText(std.http.Status.not_found, "table not found");
+        try ctx.text(.not_found, "table not found");
         return;
     }
 
@@ -216,5 +216,5 @@ fn readData(ctx: *zin.Context) !void {
 fn deleteData(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
     try store.?.deleteTable(name);
-    try ctx.text("table deleted");
+    try ctx.text(.ok, "table deleted");
 }

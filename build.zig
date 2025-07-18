@@ -13,8 +13,6 @@ pub fn build(b: *std.Build) void {
 
     exe.linkLibC();
     exe.linkSystemLibrary("rocksdb");
-    exe.addIncludePath(.{ .cwd_relative = "/usr/include" });
-    exe.addLibraryPath(.{ .cwd_relative = "/usr/lib/aarch64-linux-gnu" });
 
     const zinatra = b.addModule("zinatra", .{
         .root_source_file = .{ .cwd_relative = "./zinatra/src/App.zig" },
