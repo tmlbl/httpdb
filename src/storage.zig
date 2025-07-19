@@ -305,14 +305,7 @@ pub const Store = struct {
         );
     }
 
-    pub fn writeRow(self: *Store, table: []const u8, data: []const u8) !void {
-        var cix = std.mem.indexOf(u8, data, ",");
-        if (cix == null) {
-            // tables with only one row will have no comma
-            cix = data.len;
-        }
-        const pkey = data[0..cix.?];
-
+    pub fn writeRow(self: *Store, table: []const u8, pkey: []const u8, data: []const u8) !void {
         // TODO: should not need to allocate here
         const key = try self.rowKey(table, pkey);
         defer self.allocator.free(key);
@@ -384,7 +377,7 @@ pub const Store = struct {
 const utils = @import("./utils.zig");
 const t = std.testing;
 
-const TestDB = struct {
+pub const TestDB = struct {
     s: Store,
     dirname: [:0]u8,
 
@@ -439,14 +432,18 @@ test "scan rows" {
     var td = try TestDB.init();
     defer td.deinit();
 
-    try td.s.writeRow("foo", "bar");
-    try td.s.writeRow("foo", "baz");
+    try td.s.writeRow("foo", "bar", "a");
+    try td.s.writeRow("foo", "baz", "x");
 
     var it = try td.s.scanRows("foo");
     defer it.deinit();
+
+    var count: u32 = 0;
     while (it.next()) |row| {
-        try std.testing.expect(std.mem.startsWith(u8, row, "ba"));
+        try std.testing.expectEqual(1, row.len);
+        count += 1;
     }
+    try std.testing.expectEqual(2, count);
 }
 
 test "tagged tables" {

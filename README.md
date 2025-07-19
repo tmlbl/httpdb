@@ -8,12 +8,3 @@ created automatically when data is written, and the table schema is inferred
 from the shape of the input data. As such, `httpdb` can be integrated into
 projects incredibly quickly in any programming language, while offering a
 powerful storage backend and flexible query engine.
-
-## TODO
-
-* Add license
-* Table tagging
-* CSV querying
-* FSM
-* JSON data
-* HTML/XML data

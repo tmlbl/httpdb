@@ -4,6 +4,7 @@ const zin = @import("zinatra");
 const storage = @import("./storage.zig");
 const Schema = @import("./schema.zig");
 const Store = storage.Store;
+const json = @import("./json.zig");
 
 const max_row_size = 4096;
 
@@ -100,6 +101,20 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
 }
 
 fn postData(ctx: *zin.Context) !void {
+    if (ctx.req.head.content_type) |ctype| {
+        if (std.mem.eql(u8, ctype, "application/json")) {
+            try json.postDataJSON(ctx, &store.?);
+        } else if (std.mem.eql(u8, ctype, "text/csv")) {
+            try postDataCSV(ctx);
+        } else {
+            try ctx.fmt(.bad_request, "unsupported content-type: {s}", .{ctype});
+        }
+    } else {
+        try ctx.text(.bad_request, "missing content-type header");
+    }
+}
+
+fn postDataCSV(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
     var r = try ctx.req.reader();
     const header = try r.readUntilDelimiterAlloc(
@@ -153,7 +168,13 @@ fn postData(ctx: *zin.Context) !void {
                 return err;
             }
         };
-        try store.?.writeRow(def.name, row);
+        var cix = std.mem.indexOf(u8, row, ",");
+        if (cix == null) {
+            // tables with only one row will have no comma
+            cix = row.len;
+        }
+        const pkey = row[0..cix.?];
+        try store.?.writeRow(def.name, pkey, row);
     }
 
     try ctx.text(.ok, "ok");

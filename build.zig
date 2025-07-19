@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     const tests = b.addTest(.{
-        .root_source_file = .{ .cwd_relative = "src/main.zig" },
+        .root_source_file = .{ .cwd_relative = "src/json.zig" },
         .target = target,
         .optimize = .Debug,
     });
