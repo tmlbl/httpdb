@@ -114,6 +114,23 @@ fn postData(ctx: *zin.Context) !void {
     }
 }
 
+fn readData(ctx: *zin.Context) !void {
+    const name = ctx.params.get("name").?;
+    const p = try store.?.getTable(name);
+
+    if (p == null) {
+        try ctx.text(.not_found, "table not found");
+        return;
+    } else {
+        const schema = p.?.value;
+        if (schema.dataType == .csv) {
+            try readDataCSV(ctx);
+        } else if (schema.dataType == .json) {
+            try json.readDataJSON(ctx, &store.?);
+        }
+    }
+}
+
 fn postDataCSV(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
     var r = try ctx.req.reader();
@@ -180,7 +197,7 @@ fn postDataCSV(ctx: *zin.Context) !void {
     try ctx.text(.ok, "ok");
 }
 
-fn readData(ctx: *zin.Context) !void {
+fn readDataCSV(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
 
     // fetch table header

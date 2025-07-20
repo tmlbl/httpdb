@@ -63,6 +63,45 @@ fn writeData(
     try store.writeRow(table_name, pkey, data);
 }
 
+pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
+    const name = ctx.params.get("name").?;
+
+    var it = try store.scanRows(name);
+    defer it.deinit();
+
+    try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
+
+    const buf = try ctx.allocator().alloc(u8, 4096);
+
+    var response = ctx.req.respondStreaming(.{ .send_buffer = buf, .respond_options = .{
+        .extra_headers = ctx.headers.items,
+        .transfer_encoding = .chunked,
+    } });
+
+    const w = response.writer();
+
+    var bw = std.io.BufferedWriter(4096, @TypeOf(w)){
+        .unbuffered_writer = w,
+    };
+
+    // write JSON array
+    var first = true;
+    _ = try bw.write(&[1]u8{'['});
+    while (it.next()) |row| {
+        if (first) {
+            first = false;
+        } else {
+            _ = try bw.write(&[1]u8{','});
+        }
+        _ = try bw.write(row);
+    }
+    _ = try bw.write(&[1]u8{']'});
+
+    try bw.flush();
+
+    try response.end();
+}
+
 const TestDB = @import("./storage.zig").TestDB;
 
 test "write single value" {
