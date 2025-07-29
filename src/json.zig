@@ -38,6 +38,7 @@ fn writeData(
         data,
         .{},
     );
+    defer parsed.deinit();
 
     // Singular value
     const root = parsed.value;
@@ -115,7 +116,7 @@ test "write single value" {
     ;
 
     try writeData(
-        std.heap.page_allocator,
+        std.testing.allocator,
         &store.s,
         table_name,
         data,
