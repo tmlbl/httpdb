@@ -1,6 +1,8 @@
 httpdb
 ======
 
+--- under construction ---
+
 `httpdb` is a database system focused on ease of use. Data is written and
 queried using only HTTP requests with standard REST verbs and query strings, and
 is returned in CSV or JSON format as specified by HTTP headers. Tables are
