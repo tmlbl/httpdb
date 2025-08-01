@@ -43,7 +43,29 @@ fn writeData(
     // Singular value
     const root = parsed.value;
 
-    if (root.object.get("id") == null) {
+    switch (root) {
+        .object => return writeJsonObject(allocator, store, table_name, root),
+        .array => {
+            for (root.array.items) |value| {
+                switch (value) {
+                    .object => return writeJsonObject(allocator, store, table_name, value),
+                    else => return error.NonObjectItemInArray,
+                }
+            }
+        },
+        else => return error.NonObjectOrArray,
+    }
+}
+
+fn writeJsonObject(
+    allocator: std.mem.Allocator,
+    store: *Store,
+    table_name: []const u8,
+    value: std.json.Value,
+) !void {
+    const object = value.object;
+
+    if (object.get("id") == null) {
         return error.NoId;
     }
 
@@ -53,13 +75,18 @@ fn writeData(
         var schema = Schema{
             .name = table_name,
             .dataType = .json,
-            .columns = root.object.keys(),
+            .columns = object.keys(),
         };
-        try store.createTable(&schema);
-        std.log.debug("created table {s}", .{schema.name});
+        store.createTable(&schema) catch |err| switch (err) {
+            error.AlreadyExists => {},
+            else => return err,
+        };
     }
 
-    const pkey = root.object.get("id").?.string;
+    const pkey = object.get("id").?.string;
+
+    const data = try std.json.stringifyAlloc(allocator, value, .{});
+    defer allocator.free(data);
 
     try store.writeRow(table_name, pkey, data);
 }
@@ -67,22 +94,35 @@ fn writeData(
 pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
     const name = ctx.params.get("name").?;
 
-    var it = try store.scanRows(name);
-    defer it.deinit();
-
     try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
 
     const buf = try ctx.allocator().alloc(u8, 4096);
 
-    var response = ctx.req.respondStreaming(.{ .send_buffer = buf, .respond_options = .{
-        .extra_headers = ctx.headers.items,
-        .transfer_encoding = .chunked,
-    } });
+    var response = ctx.req.respondStreaming(.{
+        .send_buffer = buf,
+        .respond_options = .{
+            .extra_headers = ctx.headers.items,
+            .transfer_encoding = .chunked,
+        },
+    });
 
     const w = response.writer();
 
-    var bw = std.io.BufferedWriter(4096, @TypeOf(w)){
-        .unbuffered_writer = w,
+    try scanRows(store, name, w);
+
+    try response.endChunked(.{});
+}
+
+fn scanRows(
+    store: *Store,
+    tableName: []const u8,
+    writer: std.io.AnyWriter,
+) !void {
+    var it = try store.scanRows(tableName);
+    defer it.deinit();
+
+    var bw = std.io.BufferedWriter(4096, @TypeOf(writer)){
+        .unbuffered_writer = writer,
     };
 
     // write JSON array
@@ -99,8 +139,6 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
     _ = try bw.write(&[1]u8{']'});
 
     try bw.flush();
-
-    try response.end();
 }
 
 const TestDB = @import("./storage.zig").TestDB;
@@ -119,6 +157,40 @@ test "write single value" {
         std.testing.allocator,
         &store.s,
         table_name,
+        data,
+    );
+}
+
+test "write bad data" {
+    var store = try TestDB.init();
+    defer store.deinit();
+
+    const table_name = "bad";
+
+    const data = "3";
+
+    try std.testing.expectError(error.NonObjectOrArray, writeData(
+        std.testing.allocator,
+        &store.s,
+        table_name,
+        data,
+    ));
+}
+
+test "write an array" {
+    var store = try TestDB.init();
+    defer store.deinit();
+
+    const tableName = "arraytest";
+
+    const data =
+        \\[{"id": "a"},{"id":"b"}]
+    ;
+
+    try writeData(
+        std.testing.allocator,
+        &store.s,
+        tableName,
         data,
     );
 }

@@ -26,7 +26,8 @@
             pkgs.pkg-config
             pkgs.clang
             pkgs.glibc
-            pkgs.lldb # optional for debugging
+            pkgs.lldb
+            pkgs.bun  # for running tests / examples
           ];
 
           shellHook = ''

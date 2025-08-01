@@ -20,7 +20,7 @@ pub const RowIter = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        db: *rdb.rocksdb_t,
+        db: ?*rdb.rocksdb_t,
         prefix: []const u8,
     ) !RowIter {
         const readOpts = rdb.rocksdb_readoptions_create();
@@ -65,16 +65,16 @@ pub const RowIter = struct {
 };
 
 pub const SchemaIter = struct {
-    db: *rdb.rocksdb_t,
+    db: ?*rdb.rocksdb_t,
     allocator: std.mem.Allocator,
-    it: *rdb.rocksdb_iterator_t,
+    it: ?*rdb.rocksdb_iterator_t,
     first: bool = true,
     prefix: []const u8,
     isTagIterator: bool,
 
     pub fn init(
         allocator: std.mem.Allocator,
-        db: *rdb.rocksdb_t,
+        db: ?*rdb.rocksdb_t,
         tag: ?[]const u8,
     ) !SchemaIter {
         const readOpts = rdb.rocksdb_readoptions_create();
@@ -94,7 +94,7 @@ pub const SchemaIter = struct {
         return SchemaIter{
             .db = db,
             .allocator = allocator,
-            .it = iter.?,
+            .it = iter,
             .prefix = prefix,
             .isTagIterator = isTag,
         };
@@ -164,8 +164,10 @@ pub const SchemaIter = struct {
 };
 
 pub const Store = struct {
-    db: *rdb.rocksdb_t,
+    db: ?*rdb.rocksdb_t,
     allocator: std.mem.Allocator,
+    mtx: std.Thread.Mutex,
+    tableMtx: std.Thread.Mutex,
 
     pub fn init(opts: Options) !Store {
         const options: ?*rdb.rocksdb_options_t = rdb.rocksdb_options_create();
@@ -184,7 +186,12 @@ pub const Store = struct {
         }
 
         std.log.info("opened rocksdb database: {s}", .{opts.dirname});
-        return Store{ .db = db.?, .allocator = opts.allocator };
+        return Store{
+            .db = db,
+            .allocator = opts.allocator,
+            .mtx = std.Thread.Mutex{},
+            .tableMtx = std.Thread.Mutex{},
+        };
     }
 
     pub fn deinit(self: *Store) void {
@@ -192,7 +199,12 @@ pub const Store = struct {
     }
 
     pub fn put(self: *Store, key: []const u8, value: []const u8) !void {
+        self.mtx.lock();
+        defer self.mtx.unlock();
+
         const writeOpts = rdb.rocksdb_writeoptions_create();
+        defer rdb.rocksdb_writeoptions_destroy(writeOpts);
+
         var err: [*c]u8 = null;
         rdb.rocksdb_put(
             self.db,
@@ -204,15 +216,20 @@ pub const Store = struct {
             &err,
         );
         if (err) |ptr| {
+            defer rdb.rocksdb_free(ptr);
             const str = std.mem.span(ptr);
-            std.log.err("writing table definition: {s}", .{str});
+            std.log.err("in rocksdb_put: {s}", .{str});
             return error.Cerror;
         }
     }
 
     pub fn delete(self: *Store, key: []const u8) !void {
+        self.mtx.lock();
+        defer self.mtx.unlock();
+
         const writeOpts = rdb.rocksdb_writeoptions_create();
         var err: [*c]u8 = null;
+
         rdb.rocksdb_delete(self.db, writeOpts, key.ptr, key.len, &err);
         if (err) |ptr| {
             const str = std.mem.span(ptr);
@@ -238,6 +255,9 @@ pub const Store = struct {
     }
 
     pub fn createTable(self: *Store, schema: *Schema) !void {
+        self.tableMtx.lock();
+        defer self.tableMtx.unlock();
+
         const key = try self.tableKey(schema.name);
         defer self.allocator.free(key);
 
@@ -259,6 +279,9 @@ pub const Store = struct {
     }
 
     pub fn getTable(self: *Store, name: []const u8) !?std.json.Parsed(Schema) {
+        self.mtx.lock();
+        defer self.mtx.unlock();
+
         const key = try self.tableKey(name);
         defer self.allocator.free(key);
 
@@ -334,6 +357,9 @@ pub const Store = struct {
     }
 
     pub fn deleteTable(self: *Store, table: []const u8) !void {
+        self.tableMtx.lock();
+        defer self.tableMtx.unlock();
+
         const prefix = try self.rowKey(table, "");
         defer self.allocator.free(prefix);
 
