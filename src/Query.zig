@@ -116,22 +116,24 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                         clausesMatch[clauseIndex] = switch (valueToken) {
                             .string => matchesPredicateSlice(clause, valueToken.string),
                             .number => try matchesPredicateNumber(clause, valueToken.number),
-                            else => return error.UnsupportedValueType,
+                            else => false,
                         };
                     }
 
                     clauseIndex += 1;
                 }
             },
-            else => continue,
+            else => {
+                var allMatch = true;
+                for (clausesMatch) |match| {
+                    if (!match) allMatch = false;
+                }
+                if (allMatch) return allMatch;
+            },
         }
     }
 
-    var allMatch = true;
-    for (clausesMatch) |match| {
-        if (!match) allMatch = false;
-    }
-    return allMatch;
+    return false;
 }
 
 test "single clause" {
@@ -236,4 +238,21 @@ test "numeric query json" {
         \\{"num":9}
     ;
     try std.testing.expect(try query.testValueJson(noMatch));
+}
+
+test "mixed value types" {
+    const s = "foo=bar";
+    const q: ?Query = try fromQueryString(std.testing.allocator, s);
+    defer q.?.deinit();
+    const query = q.?;
+
+    try std.testing.expect(try query.testValueJson(
+        \\{"foo":"bar"}
+    ));
+
+    // If the type of the value is not supported, we can just not match it
+    // instead of returning an error, which would fail the entire request
+    try std.testing.expect(!try query.testValueJson(
+        \\{"foo":{}}
+    ));
 }
