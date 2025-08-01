@@ -1,67 +1,12 @@
 const std = @import("std");
 const Schema = @import("./schema.zig");
+const Query = @import("./Query.zig");
+const RowIter = @import("./RowIter.zig");
 const rdb = @cImport(@cInclude("rocksdb/c.h"));
 
 pub const Options = struct {
     allocator: std.mem.Allocator,
     dirname: []const u8,
-};
-
-pub const ScanOptions = struct {
-    start: ?[]const u8,
-    end: ?[]const u8,
-};
-
-pub const RowIter = struct {
-    allocator: std.mem.Allocator,
-    it: *rdb.rocksdb_iterator_t,
-    first: bool = true,
-    prefix: []const u8,
-
-    pub fn init(
-        allocator: std.mem.Allocator,
-        db: ?*rdb.rocksdb_t,
-        prefix: []const u8,
-    ) !RowIter {
-        const readOpts = rdb.rocksdb_readoptions_create();
-        const iter = rdb.rocksdb_create_iterator(db, readOpts);
-        if (iter == null) {
-            return error.CouldNotCreateIterator;
-        }
-        rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
-        const ownedPrefix = try allocator.alloc(u8, prefix.len);
-        std.mem.copyForwards(u8, ownedPrefix, prefix);
-        return RowIter{
-            .allocator = allocator,
-            .it = iter.?,
-            .prefix = ownedPrefix,
-        };
-    }
-
-    pub fn deinit(self: *RowIter) void {
-        self.allocator.free(self.prefix);
-        rdb.rocksdb_iter_destroy(self.it);
-    }
-
-    pub fn next(self: *RowIter) ?[]const u8 {
-        if (!self.first) {
-            rdb.rocksdb_iter_next(self.it);
-        }
-        self.first = false;
-        if (rdb.rocksdb_iter_valid(self.it) != 1) {
-            return null;
-        }
-
-        var keySize: usize = 0;
-        var rawKey = rdb.rocksdb_iter_key(self.it, &keySize);
-        if (!std.mem.startsWith(u8, rawKey[0..keySize], self.prefix)) {
-            return null;
-        }
-
-        var valueSize: usize = 0;
-        var rawValue = rdb.rocksdb_iter_value(self.it, &valueSize);
-        return rawValue[0..valueSize];
-    }
 };
 
 pub const SchemaIter = struct {
@@ -336,13 +281,17 @@ pub const Store = struct {
         try self.put(key, data);
     }
 
-    pub fn scanRows(self: *Store, table: []const u8) !RowIter {
+    pub fn query(self: *Store, table: []const u8, q: ?Query) !RowIter {
+        const schema = try self.getTable(table);
+        const dt = schema.?.value.dataType;
         const prefix = try self.rowKey(table, "");
         defer self.allocator.free(prefix);
         return RowIter.init(
             self.allocator,
             self.db,
             prefix,
+            dt,
+            q,
         );
     }
 

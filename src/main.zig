@@ -3,6 +3,7 @@ const zin = @import("zinatra");
 
 const storage = @import("./storage.zig");
 const Schema = @import("./schema.zig");
+const Query = @import("./Query.zig");
 const Store = storage.Store;
 const json = @import("./json.zig");
 
@@ -117,6 +118,10 @@ fn postData(ctx: *zin.Context) !void {
 fn readData(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
     const p = try store.?.getTable(name);
+    const query = try Query.fromContext(ctx);
+    if (query != null) {
+        std.log.debug("got a query object", .{});
+    }
 
     if (p == null) {
         try ctx.text(.not_found, "table not found");
@@ -199,6 +204,7 @@ fn postDataCSV(ctx: *zin.Context) !void {
 
 fn readDataCSV(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
+    const query = try Query.fromContext(ctx);
 
     // fetch table header
     const tdef = try store.?.getTable(name);
@@ -207,7 +213,7 @@ fn readDataCSV(ctx: *zin.Context) !void {
         return;
     }
 
-    var it = try store.?.scanRows(name);
+    var it = try store.?.query(name, query);
     defer it.deinit();
 
     try ctx.headers.append(.{ .name = "Content-Type", .value = "text/csv" });

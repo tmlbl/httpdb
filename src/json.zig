@@ -2,6 +2,7 @@ const std = @import("std");
 const zin = @import("zinatra");
 const Store = @import("./storage.zig").Store;
 const Schema = @import("./schema.zig");
+const Query = @import("./Query.zig");
 
 const MAX_BODY_SIZE = 4096;
 
@@ -93,6 +94,7 @@ fn writeJsonObject(
 
 pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
     const name = ctx.params.get("name").?;
+    const query = try Query.fromContext(ctx);
 
     try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
 
@@ -108,7 +110,7 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
 
     const w = response.writer();
 
-    try scanRows(store, name, w);
+    try scanRows(store, name, query, w);
 
     try response.endChunked(.{});
 }
@@ -116,9 +118,10 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
 fn scanRows(
     store: *Store,
     tableName: []const u8,
+    query: ?Query,
     writer: std.io.AnyWriter,
 ) !void {
-    var it = try store.scanRows(tableName);
+    var it = try store.query(tableName, query);
     defer it.deinit();
 
     var bw = std.io.BufferedWriter(4096, @TypeOf(writer)){
