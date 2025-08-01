@@ -72,9 +72,48 @@ pub fn fromContext(ctx: *zin.Context) !?Query {
     return null;
 }
 
-pub fn testValueJson(_: Query, value: []const u8) bool {
-    std.debug.print("testing: {s}\n", .{value});
-    return true;
+pub fn testValueJson(self: Query, value: []const u8) !bool {
+    var scanner = std.json.Scanner.initCompleteInput(self.a, value);
+    defer scanner.deinit();
+
+    var clausesMatch = try self.a.alloc(bool, self.clauses.items.len);
+    defer self.a.free(clausesMatch);
+
+    while (true) {
+        const token = try scanner.next();
+        switch (token) {
+            .end_of_document => break,
+            .string => {
+                var clauseIndex: usize = 0;
+                for (self.clauses.items) |clause| {
+                    if (std.mem.eql(u8, token.string, clause.subject)) {
+                        const valueToken = try scanner.next();
+
+                        const matches: bool = switch (clause.comparator) {
+                            .equal => std.mem.eql(u8, valueToken.string, clause.predicate),
+                            .less_than => std.mem.lessThan(u8, valueToken.string, clause.predicate),
+                            .greater_than => !std.mem.lessThan(u8, valueToken.string, clause.predicate),
+                        };
+
+                        //std.debug.print("clause result: {s} {} {s} => {}\n", .{
+                        //    clause.subject, clause.comparator, clause.predicate, matches,
+                        //});
+
+                        clausesMatch[clauseIndex] = matches;
+                    }
+
+                    clauseIndex += 1;
+                }
+            },
+            else => continue,
+        }
+    }
+
+    var allMatch = true;
+    for (clausesMatch) |match| {
+        if (!match) allMatch = false;
+    }
+    return allMatch;
 }
 
 test "single clause" {
@@ -103,4 +142,52 @@ test "compound clause" {
 
     const gt = q.clauses.items[1];
     try std.testing.expect(gt.comparator == .greater_than);
+}
+
+test "simple equals query json" {
+    var query = Query.init(std.testing.allocator);
+    defer query.deinit();
+
+    try query.clauses.append(Clause{
+        .comparator = .equal,
+        .subject = try query.a.dupe(u8, "kind"),
+        .predicate = try query.a.dupe(u8, "a"),
+    });
+
+    const match =
+        \\{"id":"1","kind":"a"}
+    ;
+    try std.testing.expect(try query.testValueJson(match));
+
+    const noMatch =
+        \\{"id":"2","kind":"b"}
+    ;
+    try std.testing.expect(!try query.testValueJson(noMatch));
+}
+
+test "compound query json" {
+    var query = Query.init(std.testing.allocator);
+    defer query.deinit();
+
+    try query.clauses.append(Clause{
+        .comparator = .equal,
+        .subject = try query.a.dupe(u8, "kind"),
+        .predicate = try query.a.dupe(u8, "a"),
+    });
+
+    try query.clauses.append(Clause{
+        .comparator = .greater_than,
+        .subject = try query.a.dupe(u8, "id"),
+        .predicate = try query.a.dupe(u8, "2"),
+    });
+
+    const idTooSmall =
+        \\{"id":"1","kind":"a"}
+    ;
+    try std.testing.expect(!try query.testValueJson(idTooSmall));
+
+    const match =
+        \\{"id":"2","kind":"a"}
+    ;
+    try std.testing.expect(try query.testValueJson(match));
 }

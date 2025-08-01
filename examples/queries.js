@@ -19,3 +19,8 @@ await writeJson({
   id: "john",
   client: "b",
 })
+
+const queryResp = await fetch(`${DB_HOST}/tables/querytest?client=b`)
+const queryResult = await queryResp.json()
+
+console.log(queryResult)
