@@ -33,6 +33,28 @@ pub const Clause = struct {
     comparator: Comparator,
 };
 
+pub fn matchesPredicateSlice(self: Clause, s: []const u8) bool {
+    return switch (self.comparator) {
+        .equal => std.mem.eql(u8, s, self.predicate),
+        .less_than => std.mem.lessThan(u8, s, self.predicate),
+        .greater_than => !std.mem.lessThan(u8, s, self.predicate) and
+            !std.mem.eql(u8, s, self.predicate),
+    };
+}
+
+pub fn matchesPredicateNumber(self: Clause, s: []const u8) !bool {
+    const num = try std.fmt.parseFloat(f64, s);
+    const predicateNum = std.fmt.parseFloat(f64, self.predicate) catch |err| {
+        std.log.err("bad numeric predicate: {}", .{err});
+        return error.ComparingNonNumberPredicateToNumber;
+    };
+    return switch (self.comparator) {
+        .equal => num == predicateNum,
+        .less_than => num < predicateNum,
+        .greater_than => num > predicateNum,
+    };
+}
+
 pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     var query = Query.init(a);
 
@@ -91,19 +113,11 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                 for (self.clauses.items) |clause| {
                     if (std.mem.eql(u8, token.string, clause.subject)) {
                         const valueToken = try scanner.next();
-
-                        const matches: bool = switch (clause.comparator) {
-                            .equal => std.mem.eql(u8, valueToken.string, clause.predicate),
-                            .less_than => std.mem.lessThan(u8, valueToken.string, clause.predicate),
-                            .greater_than => !std.mem.lessThan(u8, valueToken.string, clause.predicate) and
-                                !std.mem.eql(u8, valueToken.string, clause.predicate),
+                        clausesMatch[clauseIndex] = switch (valueToken) {
+                            .string => matchesPredicateSlice(clause, valueToken.string),
+                            .number => try matchesPredicateNumber(clause, valueToken.number),
+                            else => return error.UnsupportedValueType,
                         };
-
-                        //std.debug.print("clause result: {s} {} {s} => {}\n", .{
-                        //    clause.subject, clause.comparator, clause.predicate, matches,
-                        //});
-
-                        clausesMatch[clauseIndex] = matches;
                     }
 
                     clauseIndex += 1;
@@ -201,4 +215,25 @@ test "bad query string" {
         error.NoValueForKey,
         Query.fromQueryString(std.testing.allocator, "foo?bar"),
     );
+}
+
+test "numeric query json" {
+    var query = Query.init(std.testing.allocator);
+    defer query.deinit();
+
+    try query.clauses.append(Clause{
+        .comparator = .less_than,
+        .subject = try query.a.dupe(u8, "num"),
+        .predicate = try query.a.dupe(u8, "17"),
+    });
+
+    const match =
+        \\{"num":100}
+    ;
+    try std.testing.expect(!try query.testValueJson(match));
+
+    const noMatch =
+        \\{"num":9}
+    ;
+    try std.testing.expect(try query.testValueJson(noMatch));
 }
