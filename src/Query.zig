@@ -40,12 +40,15 @@ pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     while (clauseIt.next()) |clauseStr| {
         var it = std.mem.splitAny(u8, clauseStr, "<>=");
         const subject = it.first();
-        const predicate = it.next().?;
+        const predicate = it.next();
+        if (predicate == null) {
+            return error.NoValueForKey;
+        }
         const comparatorByte = clauseStr[subject.len];
 
         try query.clauses.append(.{
             .subject = try a.dupe(u8, subject),
-            .predicate = try a.dupe(u8, predicate),
+            .predicate = try a.dupe(u8, predicate.?),
             .comparator = switch (comparatorByte) {
                 '<' => .less_than,
                 '>' => .greater_than,
@@ -92,7 +95,8 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                         const matches: bool = switch (clause.comparator) {
                             .equal => std.mem.eql(u8, valueToken.string, clause.predicate),
                             .less_than => std.mem.lessThan(u8, valueToken.string, clause.predicate),
-                            .greater_than => !std.mem.lessThan(u8, valueToken.string, clause.predicate),
+                            .greater_than => !std.mem.lessThan(u8, valueToken.string, clause.predicate) and
+                                !std.mem.eql(u8, valueToken.string, clause.predicate),
                         };
 
                         //std.debug.print("clause result: {s} {} {s} => {}\n", .{
@@ -178,7 +182,7 @@ test "compound query json" {
     try query.clauses.append(Clause{
         .comparator = .greater_than,
         .subject = try query.a.dupe(u8, "id"),
-        .predicate = try query.a.dupe(u8, "2"),
+        .predicate = try query.a.dupe(u8, "1"),
     });
 
     const idTooSmall =
@@ -190,4 +194,11 @@ test "compound query json" {
         \\{"id":"2","kind":"a"}
     ;
     try std.testing.expect(try query.testValueJson(match));
+}
+
+test "bad query string" {
+    try std.testing.expectError(
+        error.NoValueForKey,
+        Query.fromQueryString(std.testing.allocator, "foo?bar"),
+    );
 }
