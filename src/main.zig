@@ -118,10 +118,6 @@ fn postData(ctx: *zin.Context) !void {
 fn readData(ctx: *zin.Context) !void {
     const name = ctx.params.get("name").?;
     const p = try store.?.getTable(name);
-    const query = try Query.fromContext(ctx);
-    if (query != null) {
-        std.log.debug("got a query object", .{});
-    }
 
     if (p == null) {
         try ctx.text(.not_found, "table not found");

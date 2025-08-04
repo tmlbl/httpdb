@@ -268,4 +268,8 @@ test "multiple clauses for one lhs value" {
     try std.testing.expect(try q.testValueJson(
         \\{"x":15}
     ));
+
+    try std.testing.expect(!try q.testValueJson(
+        \\{"x": 21}
+    ));
 }

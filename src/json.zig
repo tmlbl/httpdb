@@ -110,7 +110,11 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
 
     const w = response.writer();
 
+    const startTime = std.time.milliTimestamp();
     try scanRows(store, name, query, w);
+    const elapsed = std.time.milliTimestamp() - startTime;
+
+    std.log.debug("query took {d}ms", .{elapsed});
 
     try response.endChunked(.{});
 }
