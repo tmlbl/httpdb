@@ -110,12 +110,16 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
             .end_of_document => break,
             .string => {
                 var clauseIndex: usize = 0;
+                var valueToken: ?std.json.Token = null;
+
                 for (self.clauses.items) |clause| {
                     if (std.mem.eql(u8, token.string, clause.lhs)) {
-                        const valueToken = try scanner.next();
-                        clausesMatch[clauseIndex] = switch (valueToken) {
-                            .string => matchesSlice(clause, valueToken.string),
-                            .number => try matchesNumber(clause, valueToken.number),
+                        if (valueToken == null) {
+                            valueToken = try scanner.next();
+                        }
+                        clausesMatch[clauseIndex] = switch (valueToken.?) {
+                            .string => matchesSlice(clause, valueToken.?.string),
+                            .number => try matchesNumber(clause, valueToken.?.number),
                             else => false,
                         };
                     }
@@ -254,5 +258,14 @@ test "mixed value types" {
     // instead of returning an error, which would fail the entire request
     try std.testing.expect(!try query.testValueJson(
         \\{"foo":{}}
+    ));
+}
+
+test "multiple clauses for one lhs value" {
+    const q = (try fromQueryString(std.testing.allocator, "x>10&x<20")).?;
+    defer q.deinit();
+
+    try std.testing.expect(try q.testValueJson(
+        \\{"x":15}
     ));
 }
