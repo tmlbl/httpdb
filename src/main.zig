@@ -28,9 +28,6 @@ pub fn main() !void {
     try app.get("/tables/:name", readData);
     try app.delete("/tables/:name", deleteData);
 
-    try app.post("/tables/:name/tags/:tag", tagTable);
-    try app.get("/tags/:tag", listTagTables);
-
     store = try Store.init(.{
         .dirname = "/tmp/httpdb",
         .allocator = gpa.allocator(),
@@ -44,22 +41,8 @@ fn version(ctx: *zin.Context) !void {
     try ctx.text(.ok, "v0.0.1");
 }
 
-fn tagTable(ctx: *zin.Context) !void {
-    const name = ctx.params.get("name").?;
-    const tag = ctx.params.get("tag").?;
-
-    try store.?.tagTable(name, tag);
-
-    try ctx.text(.ok, "added tag");
-}
-
 fn listTablesAll(ctx: *zin.Context) !void {
     return listTables(ctx, null);
-}
-
-fn listTagTables(ctx: *zin.Context) !void {
-    const tag = ctx.params.get("tag").?;
-    return listTables(ctx, tag);
 }
 
 fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {

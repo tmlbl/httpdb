@@ -191,14 +191,6 @@ pub const Store = struct {
         );
     }
 
-    fn tagKey(self: *Store, tag: []const u8, table: []const u8) ![]const u8 {
-        return std.fmt.allocPrint(
-            self.allocator,
-            "tag:{s}:{s}",
-            .{ tag, table },
-        );
-    }
-
     pub fn createTable(self: *Store, schema: *Schema) !void {
         self.tableMtx.lock();
         defer self.tableMtx.unlock();
@@ -258,13 +250,6 @@ pub const Store = struct {
         );
     }
 
-    pub fn tagTable(self: *Store, table: []const u8, tag: []const u8) !void {
-        const key = try self.tagKey(tag, table);
-        defer self.allocator.free(key);
-
-        try self.put(key, table);
-    }
-
     fn rowKey(self: *Store, table: []const u8, pkey: []const u8) ![]const u8 {
         return std.fmt.allocPrint(
             self.allocator,
@@ -283,6 +268,7 @@ pub const Store = struct {
 
     pub fn query(self: *Store, table: []const u8, q: ?Query) !RowIter {
         const schema = try self.getTable(table);
+        defer schema.?.deinit();
         const dt = schema.?.value.dataType;
         const prefix = try self.rowKey(table, "");
         defer self.allocator.free(prefix);
@@ -292,16 +278,6 @@ pub const Store = struct {
             prefix,
             dt,
             q,
-        );
-    }
-
-    pub fn scanTag(self: *Store, tag: []const u8) !RowIter {
-        const prefix = try self.tagKey(tag, "");
-        defer self.allocator.free(prefix);
-        return RowIter.init(
-            self.allocator,
-            self.db,
-            prefix,
         );
     }
 
@@ -407,10 +383,16 @@ test "scan rows" {
     var td = try TestDB.init();
     defer td.deinit();
 
+    var schema = Schema{
+        .columns = &.{ "a", "b" },
+        .dataType = .csv,
+        .name = "foo",
+    };
+    try td.s.createTable(&schema);
     try td.s.writeRow("foo", "bar", "a");
     try td.s.writeRow("foo", "baz", "x");
 
-    var it = try td.s.scanRows("foo");
+    var it = try td.s.query("foo", null);
     defer it.deinit();
 
     var count: u32 = 0;
@@ -419,36 +401,4 @@ test "scan rows" {
         count += 1;
     }
     try std.testing.expectEqual(2, count);
-}
-
-test "tagged tables" {
-    var td = try TestDB.init();
-    defer td.deinit();
-
-    var a = Schema{
-        .name = "table_a",
-        .dataType = Schema.DataType.csv,
-        .columns = &[_][]const u8{ "foo", "bar" },
-    };
-
-    var b = Schema{
-        .name = "table_b",
-        .dataType = Schema.DataType.csv,
-        .columns = &[_][]const u8{ "foo", "bar" },
-    };
-
-    try td.s.createTable(&a);
-    try td.s.createTable(&b);
-
-    try td.s.tagTable(a.name, "foo");
-
-    var it = try SchemaIter.init(std.testing.allocator, td.s.db, "foo");
-    defer it.deinit();
-    var count: usize = 0;
-    while (it.next()) |schema| {
-        const containsName = std.mem.containsAtLeast(u8, schema, 1, "table_a");
-        try std.testing.expect(containsName);
-        count += 1;
-    }
-    try std.testing.expect(count == 1);
 }
