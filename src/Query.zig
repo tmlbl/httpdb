@@ -15,8 +15,8 @@ fn init(a: std.mem.Allocator) Query {
 
 pub fn deinit(self: Query) void {
     for (self.clauses.items) |clause| {
-        self.a.free(clause.subject);
-        self.a.free(clause.predicate);
+        self.a.free(clause.lhs);
+        self.a.free(clause.rhs);
     }
     self.clauses.deinit();
 }
@@ -28,30 +28,30 @@ pub const Comparator = enum {
 };
 
 pub const Clause = struct {
-    subject: []const u8,
-    predicate: []const u8,
+    lhs: []const u8,
+    rhs: []const u8,
     comparator: Comparator,
 };
 
-pub fn matchesPredicateSlice(self: Clause, s: []const u8) bool {
+pub fn matchesSlice(self: Clause, s: []const u8) bool {
     return switch (self.comparator) {
-        .equal => std.mem.eql(u8, s, self.predicate),
-        .less_than => std.mem.lessThan(u8, s, self.predicate),
-        .greater_than => !std.mem.lessThan(u8, s, self.predicate) and
-            !std.mem.eql(u8, s, self.predicate),
+        .equal => std.mem.eql(u8, s, self.rhs),
+        .less_than => std.mem.lessThan(u8, s, self.rhs),
+        .greater_than => !std.mem.lessThan(u8, s, self.rhs) and
+            !std.mem.eql(u8, s, self.rhs),
     };
 }
 
-pub fn matchesPredicateNumber(self: Clause, s: []const u8) !bool {
+pub fn matchesNumber(self: Clause, s: []const u8) !bool {
     const num = try std.fmt.parseFloat(f64, s);
-    const predicateNum = std.fmt.parseFloat(f64, self.predicate) catch |err| {
-        std.log.err("bad numeric predicate: {}", .{err});
-        return error.ComparingNonNumberPredicateToNumber;
+    const rhsNum = std.fmt.parseFloat(f64, self.rhs) catch |err| {
+        std.log.err("bad numeric rhs: {}", .{err});
+        return error.ComparingNonNumberToNumber;
     };
     return switch (self.comparator) {
-        .equal => num == predicateNum,
-        .less_than => num < predicateNum,
-        .greater_than => num > predicateNum,
+        .equal => num == rhsNum,
+        .less_than => num < rhsNum,
+        .greater_than => num > rhsNum,
     };
 }
 
@@ -61,16 +61,16 @@ pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     var clauseIt = std.mem.splitAny(u8, s, "&");
     while (clauseIt.next()) |clauseStr| {
         var it = std.mem.splitAny(u8, clauseStr, "<>=");
-        const subject = it.first();
-        const predicate = it.next();
-        if (predicate == null) {
+        const lhs = it.first();
+        const rhs = it.next();
+        if (rhs == null) {
             return error.NoValueForKey;
         }
-        const comparatorByte = clauseStr[subject.len];
+        const comparatorByte = clauseStr[lhs.len];
 
         try query.clauses.append(.{
-            .subject = try a.dupe(u8, subject),
-            .predicate = try a.dupe(u8, predicate.?),
+            .lhs = try a.dupe(u8, lhs),
+            .rhs = try a.dupe(u8, rhs.?),
             .comparator = switch (comparatorByte) {
                 '<' => .less_than,
                 '>' => .greater_than,
@@ -111,11 +111,11 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
             .string => {
                 var clauseIndex: usize = 0;
                 for (self.clauses.items) |clause| {
-                    if (std.mem.eql(u8, token.string, clause.subject)) {
+                    if (std.mem.eql(u8, token.string, clause.lhs)) {
                         const valueToken = try scanner.next();
                         clausesMatch[clauseIndex] = switch (valueToken) {
-                            .string => matchesPredicateSlice(clause, valueToken.string),
-                            .number => try matchesPredicateNumber(clause, valueToken.number),
+                            .string => matchesSlice(clause, valueToken.string),
+                            .number => try matchesNumber(clause, valueToken.number),
                             else => false,
                         };
                     }
@@ -145,8 +145,8 @@ test "single clause" {
 
     const clause = q.?.clauses.getLast();
 
-    try std.testing.expectEqualSlices(u8, "foo", clause.subject);
-    try std.testing.expectEqualSlices(u8, "bar", clause.predicate);
+    try std.testing.expectEqualSlices(u8, "foo", clause.lhs);
+    try std.testing.expectEqualSlices(u8, "bar", clause.rhs);
     try std.testing.expect(clause.comparator == .equal);
 }
 
@@ -170,8 +170,8 @@ test "simple equals query json" {
 
     try query.clauses.append(Clause{
         .comparator = .equal,
-        .subject = try query.a.dupe(u8, "kind"),
-        .predicate = try query.a.dupe(u8, "a"),
+        .lhs = try query.a.dupe(u8, "kind"),
+        .rhs = try query.a.dupe(u8, "a"),
     });
 
     const match =
@@ -191,14 +191,14 @@ test "compound query json" {
 
     try query.clauses.append(Clause{
         .comparator = .equal,
-        .subject = try query.a.dupe(u8, "kind"),
-        .predicate = try query.a.dupe(u8, "a"),
+        .lhs = try query.a.dupe(u8, "kind"),
+        .rhs = try query.a.dupe(u8, "a"),
     });
 
     try query.clauses.append(Clause{
         .comparator = .greater_than,
-        .subject = try query.a.dupe(u8, "id"),
-        .predicate = try query.a.dupe(u8, "1"),
+        .lhs = try query.a.dupe(u8, "id"),
+        .rhs = try query.a.dupe(u8, "1"),
     });
 
     const idTooSmall =
@@ -225,8 +225,8 @@ test "numeric query json" {
 
     try query.clauses.append(Clause{
         .comparator = .less_than,
-        .subject = try query.a.dupe(u8, "num"),
-        .predicate = try query.a.dupe(u8, "17"),
+        .lhs = try query.a.dupe(u8, "num"),
+        .rhs = try query.a.dupe(u8, "17"),
     });
 
     const match =
