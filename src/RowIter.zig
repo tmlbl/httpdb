@@ -9,14 +9,14 @@ allocator: std.mem.Allocator,
 it: *rdb.rocksdb_iterator_t,
 first: bool = true,
 prefix: []const u8,
-dt: Schema.DataType,
+schema: Schema,
 query: ?Query = null,
 
 pub fn init(
     allocator: std.mem.Allocator,
     db: ?*rdb.rocksdb_t,
     prefix: []const u8,
-    dt: Schema.DataType,
+    schema: Schema,
     q: ?Query,
 ) !RowIter {
     const readOpts = rdb.rocksdb_readoptions_create();
@@ -31,7 +31,7 @@ pub fn init(
         .allocator = allocator,
         .it = iter.?,
         .prefix = ownedPrefix,
-        .dt = dt,
+        .schema = schema,
         .query = q,
     };
 }
@@ -62,8 +62,16 @@ pub fn next(self: *RowIter) ?[]const u8 {
 
     if (self.query == null) {
         return value;
-    } else if (self.dt == .json) {
+    } else if (self.schema.dataType == .json) {
         const match = self.query.?.testValueJson(value) catch |err| {
+            std.log.err("error evaluating query! {}", .{err});
+            return value;
+        };
+        if (!match) {
+            return self.next();
+        }
+    } else if (self.schema.dataType == .csv) {
+        const match = self.query.?.testValueCsv(self.schema, value) catch |err| {
             std.log.err("error evaluating query! {}", .{err});
             return value;
         };

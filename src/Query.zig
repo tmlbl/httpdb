@@ -1,5 +1,6 @@
 const std = @import("std");
 const zin = @import("zinatra");
+const Schema = @import("./schema.zig");
 
 const Query = @This();
 
@@ -140,6 +141,35 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
     return false;
 }
 
+pub fn testValueCsv(self: Query, schema: Schema, value: []const u8) !bool {
+    var i: usize = 0;
+    var clausesMatch = try self.a.alloc(bool, self.clauses.items.len);
+    defer self.a.free(clausesMatch);
+
+    var it = std.mem.splitAny(u8, value, ",");
+    while (it.next()) |v| {
+        var clauseIndex: usize = 0;
+        const key = schema.columns[i];
+
+        for (self.clauses.items) |clause| {
+            if (std.mem.eql(u8, key, clause.lhs)) {
+                clausesMatch[clauseIndex] = matchesSlice(clause, v);
+                clauseIndex += 1;
+            }
+        }
+
+        var allMatch = true;
+        for (clausesMatch) |match| {
+            if (!match) allMatch = false;
+        }
+        if (allMatch) return allMatch;
+
+        i += 1;
+    }
+
+    return false;
+}
+
 test "single clause" {
     const s = "foo=bar";
     const q: ?Query = try fromQueryString(std.testing.allocator, s);
@@ -272,4 +302,18 @@ test "multiple clauses for one lhs value" {
     try std.testing.expect(!try q.testValueJson(
         \\{"x": 21}
     ));
+}
+
+test "csv basic query" {
+    const q = (try fromQueryString(std.testing.allocator, "foo=bar")).?;
+    defer q.deinit();
+
+    const schema = Schema{
+        .columns = &.{ "id", "foo" },
+        .dataType = .csv,
+        .name = "test",
+    };
+
+    try std.testing.expect(try q.testValueCsv(schema, "1,bar"));
+    try std.testing.expect(!try q.testValueCsv(schema, "1,baz"));
 }
