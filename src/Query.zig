@@ -153,7 +153,11 @@ pub fn testValueCsv(self: Query, schema: Schema, value: []const u8) !bool {
 
         for (self.clauses.items) |clause| {
             if (std.mem.eql(u8, key, clause.lhs)) {
-                clausesMatch[clauseIndex] = matchesSlice(clause, v);
+                if (isNumeric(clause.rhs)) {
+                    clausesMatch[clauseIndex] = try matchesNumber(clause, v);
+                } else {
+                    clausesMatch[clauseIndex] = matchesSlice(clause, v);
+                }
                 clauseIndex += 1;
             }
         }
@@ -168,6 +172,18 @@ pub fn testValueCsv(self: Query, schema: Schema, value: []const u8) !bool {
     }
 
     return false;
+}
+
+// Very basic check to see if value contains only numerals and periods
+fn isNumeric(s: []const u8) bool {
+    for (s) |b| {
+        if (b < 48 and b != 46) {
+            return false;
+        } else if (b > 57) {
+            return false;
+        }
+    }
+    return true;
 }
 
 test "single clause" {
@@ -316,4 +332,17 @@ test "csv basic query" {
 
     try std.testing.expect(try q.testValueCsv(schema, "1,bar"));
     try std.testing.expect(!try q.testValueCsv(schema, "1,baz"));
+}
+
+test "csv numeric query" {
+    const q = (try fromQueryString(std.testing.allocator, "age<18")).?;
+    defer q.deinit();
+
+    const schema = Schema{
+        .columns = &.{ "name", "age" },
+        .dataType = .csv,
+        .name = "people",
+    };
+
+    try std.testing.expect(try q.testValueCsv(schema, "martin,7"));
 }
