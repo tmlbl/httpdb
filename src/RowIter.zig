@@ -15,7 +15,6 @@ query: ?Query = null,
 pub fn init(
     allocator: std.mem.Allocator,
     db: ?*rdb.rocksdb_t,
-    prefix: []const u8,
     schema: Schema,
     q: ?Query,
 ) !RowIter {
@@ -24,13 +23,17 @@ pub fn init(
     if (iter == null) {
         return error.CouldNotCreateIterator;
     }
+    const prefix = try tablePrefix(
+        allocator,
+        schema,
+        getSeekKey(q, schema),
+    );
+    std.debug.print("seek to: {s}\n", .{prefix});
     rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
-    const ownedPrefix = try allocator.alloc(u8, prefix.len);
-    std.mem.copyForwards(u8, ownedPrefix, prefix);
     return RowIter{
         .allocator = allocator,
         .it = iter.?,
-        .prefix = ownedPrefix,
+        .prefix = prefix,
         .schema = schema,
         .query = q,
     };
@@ -39,6 +42,36 @@ pub fn init(
 pub fn deinit(self: *RowIter) void {
     self.allocator.free(self.prefix);
     rdb.rocksdb_iter_destroy(self.it);
+}
+
+fn tablePrefix(allocator: std.mem.Allocator, schema: Schema, pkey: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "row:{s}:{s}",
+        .{ schema.name, pkey },
+    );
+}
+
+fn getSeekKey(query: ?Query, schema: Schema) []const u8 {
+    if (query != null) {
+        for (query.?.clauses.items) |clause| {
+            if (schema.dataType == .csv and
+                std.mem.eql(u8, clause.lhs, schema.columns[0]))
+            {
+                if (clause.comparator == .equal) {
+                    return clause.rhs;
+                }
+            }
+            if (schema.dataType == .json and
+                std.mem.eql(u8, clause.lhs, "id"))
+            {
+                if (clause.comparator == .equal) {
+                    return clause.rhs;
+                }
+            }
+        }
+    }
+    return "";
 }
 
 pub fn next(self: *RowIter) ?[]const u8 {
@@ -52,7 +85,8 @@ pub fn next(self: *RowIter) ?[]const u8 {
 
     var keySize: usize = 0;
     var rawKey = rdb.rocksdb_iter_key(self.it, &keySize);
-    if (!std.mem.startsWith(u8, rawKey[0..keySize], self.prefix)) {
+    const keySlice = rawKey[0..keySize];
+    if (!std.mem.startsWith(u8, keySlice, self.prefix)) {
         return null;
     }
 

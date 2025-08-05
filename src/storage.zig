@@ -269,12 +269,9 @@ pub const Store = struct {
     pub fn query(self: *Store, table: []const u8, q: ?Query) !RowIter {
         const schema = try self.getTable(table);
         defer schema.?.deinit();
-        const prefix = try self.rowKey(table, "");
-        defer self.allocator.free(prefix);
         return RowIter.init(
             self.allocator,
             self.db,
-            prefix,
             schema.?.value,
             q,
         );
