@@ -21,12 +21,10 @@ pub fn main() !void {
     });
     defer app.deinit();
 
-    try app.get("/version", version);
-
     try app.get("/tables", listTablesAll);
-    try app.post("/tables/:name", postData);
-    try app.get("/tables/:name", readData);
-    try app.delete("/tables/:name", deleteData);
+    try app.post("/:name", postData);
+    try app.get("/:name", readData);
+    try app.delete("/:name", deleteData);
 
     store = try Store.init(.{
         .dirname = "/tmp/httpdb",
@@ -35,10 +33,6 @@ pub fn main() !void {
     defer store.?.deinit();
 
     try app.listen();
-}
-
-fn version(ctx: *zin.Context) !void {
-    try ctx.text(.ok, "v0.0.1");
 }
 
 fn listTablesAll(ctx: *zin.Context) !void {

@@ -49,7 +49,7 @@ fn writeData(
         .array => {
             for (root.array.items) |value| {
                 switch (value) {
-                    .object => return writeJsonObject(allocator, store, table_name, value),
+                    .object => try writeJsonObject(allocator, store, table_name, value),
                     else => return error.NonObjectItemInArray,
                 }
             }
