@@ -28,7 +28,6 @@ pub fn init(
         schema,
         getSeekKey(q, schema),
     );
-    std.debug.print("seek to: {s}\n", .{prefix});
     rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
     return RowIter{
         .allocator = allocator,
