@@ -71,7 +71,8 @@ fn writeJsonObject(
     }
 
     // Check if table exists
-    if (try store.getTable(table_name) == null) {
+    const table = try store.getTable(table_name);
+    if (table == null) {
         // Use top-level keys as the column list
         var schema = Schema{
             .name = table_name,
@@ -82,6 +83,8 @@ fn writeJsonObject(
             error.AlreadyExists => {},
             else => return err,
         };
+    } else {
+        table.?.deinit();
     }
 
     const pkey = object.get("id").?.string;
