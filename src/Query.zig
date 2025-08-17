@@ -56,6 +56,13 @@ pub fn matchesNumber(self: Clause, s: []const u8) !bool {
     };
 }
 
+fn matchesBoolean(self: Clause, b: bool) bool {
+    if (std.mem.eql(u8, "true", self.rhs) and b) {
+        return true;
+    }
+    return false;
+}
+
 pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     var query = Query.init(a);
 
@@ -121,6 +128,8 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                         clausesMatch[clauseIndex] = switch (valueToken.?) {
                             .string => matchesSlice(clause, valueToken.?.string),
                             .number => try matchesNumber(clause, valueToken.?.number),
+                            .true => matchesBoolean(clause, true),
+                            .false => matchesBoolean(clause, false),
                             else => false,
                         };
                     }
@@ -288,6 +297,21 @@ test "numeric query json" {
         \\{"num":9}
     ;
     try std.testing.expect(try query.testValueJson(noMatch));
+}
+
+test "boolean query json" {
+    const s = "valid=true";
+    const q = try fromQueryString(std.testing.allocator, s);
+    defer q.?.deinit();
+    const query = q.?;
+
+    try std.testing.expect(try query.testValueJson(
+        \\{"valid":true}
+    ));
+
+    try std.testing.expect(!try query.testValueJson(
+        \\{"valid":false}
+    ));
 }
 
 test "mixed value types" {
