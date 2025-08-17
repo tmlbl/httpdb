@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     exe.linkSystemLibrary("rocksdb");
 
     const zinatra = b.addModule("zinatra", .{
-        .root_source_file = .{ .cwd_relative = "./zinatra/src/App.zig" },
+        .root_source_file = .{ .cwd_relative = "./zinatra/src/root.zig" },
     });
     exe.root_module.addImport("zinatra", zinatra);
 
