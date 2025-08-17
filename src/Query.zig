@@ -32,36 +32,36 @@ pub const Clause = struct {
     lhs: []const u8,
     rhs: []const u8,
     comparator: Comparator,
-};
 
-pub fn matchesSlice(self: Clause, s: []const u8) bool {
-    return switch (self.comparator) {
-        .equal => std.mem.eql(u8, s, self.rhs),
-        .less_than => std.mem.lessThan(u8, s, self.rhs),
-        .greater_than => !std.mem.lessThan(u8, s, self.rhs) and
-            !std.mem.eql(u8, s, self.rhs),
-    };
-}
-
-pub fn matchesNumber(self: Clause, s: []const u8) !bool {
-    const num = try std.fmt.parseFloat(f64, s);
-    const rhsNum = std.fmt.parseFloat(f64, self.rhs) catch |err| {
-        std.log.err("bad numeric rhs: {}", .{err});
-        return error.ComparingNonNumberToNumber;
-    };
-    return switch (self.comparator) {
-        .equal => num == rhsNum,
-        .less_than => num < rhsNum,
-        .greater_than => num > rhsNum,
-    };
-}
-
-fn matchesBoolean(self: Clause, b: bool) bool {
-    if (std.mem.eql(u8, "true", self.rhs) and b) {
-        return true;
+    pub fn matchesSlice(self: Clause, s: []const u8) bool {
+        return switch (self.comparator) {
+            .equal => std.mem.eql(u8, s, self.rhs),
+            .less_than => std.mem.lessThan(u8, s, self.rhs),
+            .greater_than => !std.mem.lessThan(u8, s, self.rhs) and
+                !std.mem.eql(u8, s, self.rhs),
+        };
     }
-    return false;
-}
+
+    pub fn matchesNumber(self: Clause, s: []const u8) !bool {
+        const num = try std.fmt.parseFloat(f64, s);
+        const rhsNum = std.fmt.parseFloat(f64, self.rhs) catch |err| {
+            std.log.err("bad numeric rhs: {}", .{err});
+            return error.ComparingNonNumberToNumber;
+        };
+        return switch (self.comparator) {
+            .equal => num == rhsNum,
+            .less_than => num < rhsNum,
+            .greater_than => num > rhsNum,
+        };
+    }
+
+    pub fn matchesBoolean(self: Clause, b: bool) bool {
+        if (std.mem.eql(u8, "true", self.rhs) and b) {
+            return true;
+        }
+        return false;
+    }
+};
 
 pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     var query = Query.init(a);
@@ -126,10 +126,10 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                             valueToken = try scanner.next();
                         }
                         clausesMatch[clauseIndex] = switch (valueToken.?) {
-                            .string => matchesSlice(clause, valueToken.?.string),
-                            .number => try matchesNumber(clause, valueToken.?.number),
-                            .true => matchesBoolean(clause, true),
-                            .false => matchesBoolean(clause, false),
+                            .string => clause.matchesSlice(valueToken.?.string),
+                            .number => try clause.matchesNumber(valueToken.?.number),
+                            .true => clause.matchesBoolean(true),
+                            .false => clause.matchesBoolean(false),
                             else => false,
                         };
                     }
@@ -163,9 +163,9 @@ pub fn testValueCsv(self: Query, schema: Schema, value: []const u8) !bool {
         for (self.clauses.items) |clause| {
             if (std.mem.eql(u8, key, clause.lhs)) {
                 if (isNumeric(clause.rhs)) {
-                    clausesMatch[clauseIndex] = try matchesNumber(clause, v);
+                    clausesMatch[clauseIndex] = try clause.matchesNumber(v);
                 } else {
-                    clausesMatch[clauseIndex] = matchesSlice(clause, v);
+                    clausesMatch[clauseIndex] = clause.matchesSlice(v);
                 }
                 clauseIndex += 1;
             }
