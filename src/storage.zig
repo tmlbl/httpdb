@@ -277,11 +277,11 @@ pub const Store = struct {
         );
     }
 
-    pub fn deleteTable(self: *Store, table: []const u8) !void {
+    pub fn deleteData(self: *Store, schema: Schema, q: ?Query) !void {
         self.tableMtx.lock();
         defer self.tableMtx.unlock();
 
-        const prefix = try self.rowKey(table, "");
+        const prefix = try self.rowKey(schema.name, "");
         defer self.allocator.free(prefix);
 
         const readOpts = rdb.rocksdb_readoptions_create();
@@ -304,6 +304,19 @@ pub const Store = struct {
                 break;
             }
 
+            var valueSize: usize = 0;
+            var rawValue = rdb.rocksdb_iter_value(iter, &valueSize);
+            const value = rawValue[0..valueSize];
+            if (q != null) {
+                const match = switch (schema.dataType) {
+                    .csv => try q.?.testValueCsv(schema, value),
+                    .json => try q.?.testValueJson(value),
+                };
+                if (!match) {
+                    continue;
+                }
+            }
+
             const writeOpts = rdb.rocksdb_writeoptions_create();
             var err: [*c]u8 = null;
             rdb.rocksdb_delete(self.db, writeOpts, rawKey, keySize, &err);
@@ -315,9 +328,11 @@ pub const Store = struct {
         }
         rdb.rocksdb_iter_destroy(iter);
 
-        const defKey = try self.tableKey(table);
-        try self.delete(defKey);
-        self.allocator.free(defKey);
+        if (q == null) {
+            const defKey = try self.tableKey(schema.name);
+            try self.delete(defKey);
+            self.allocator.free(defKey);
+        }
     }
 };
 
