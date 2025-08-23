@@ -183,9 +183,9 @@ pub const Store = struct {
         }
     }
 
-    fn tableKey(self: *Store, name: []const u8) ![]const u8 {
-        return std.fmt.allocPrint(
-            self.allocator,
+    fn tableKey(buf: []u8, name: []const u8) ![]const u8 {
+        return std.fmt.bufPrint(
+            buf,
             "table_def:{s}",
             .{name},
         );
@@ -195,8 +195,8 @@ pub const Store = struct {
         self.tableMtx.lock();
         defer self.tableMtx.unlock();
 
-        const key = try self.tableKey(schema.name);
-        defer self.allocator.free(key);
+        var buf: [512]u8 = undefined;
+        const key = try tableKey(&buf, schema.name);
 
         // check if exists
         var td = try self.getTable(schema.name);
@@ -219,8 +219,8 @@ pub const Store = struct {
         self.mtx.lock();
         defer self.mtx.unlock();
 
-        const key = try self.tableKey(name);
-        defer self.allocator.free(key);
+        var buf: [512]u8 = undefined;
+        const key = try tableKey(&buf, name);
 
         const readOptions = rdb.rocksdb_readoptions_create();
         var valueLength: usize = 0;
@@ -250,18 +250,17 @@ pub const Store = struct {
         );
     }
 
-    fn rowKey(self: *Store, table: []const u8, pkey: []const u8) ![]const u8 {
-        return std.fmt.allocPrint(
-            self.allocator,
+    fn rowKey(buf: []u8, table: []const u8, pkey: []const u8) ![]const u8 {
+        return std.fmt.bufPrint(
+            buf,
             "row:{s}:{s}",
             .{ table, pkey },
         );
     }
 
     pub fn writeRow(self: *Store, table: []const u8, pkey: []const u8, data: []const u8) !void {
-        // TODO: should not need to allocate here
-        const key = try self.rowKey(table, pkey);
-        defer self.allocator.free(key);
+        var buf: [512]u8 = undefined;
+        const key = try rowKey(&buf, table, pkey);
 
         try self.put(key, data);
     }
@@ -281,8 +280,8 @@ pub const Store = struct {
         self.tableMtx.lock();
         defer self.tableMtx.unlock();
 
-        const prefix = try self.rowKey(schema.name, "");
-        defer self.allocator.free(prefix);
+        var buf: [512]u8 = undefined;
+        const prefix = try rowKey(&buf, schema.name, "");
 
         const readOpts = rdb.rocksdb_readoptions_create();
         const iter = rdb.rocksdb_create_iterator(self.db, readOpts);
@@ -329,9 +328,8 @@ pub const Store = struct {
         rdb.rocksdb_iter_destroy(iter);
 
         if (q == null) {
-            const defKey = try self.tableKey(schema.name);
+            const defKey = try tableKey(&buf, schema.name);
             try self.delete(defKey);
-            self.allocator.free(defKey);
         }
     }
 };

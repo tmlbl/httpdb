@@ -34,11 +34,7 @@ pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     var it = std.mem.splitAny(u8, header, ",");
     while (it.next()) |col| {
         if (!std.mem.eql(u8, col, def.columns[i])) {
-            try ctx.text(.bad_request, try std.fmt.allocPrint(
-                ctx.allocator(),
-                "unexpected column: {s}",
-                .{col},
-            ));
+            try ctx.fmt(.bad_request, "unexpected column: {s}", .{col});
             return;
         }
         i += 1;
