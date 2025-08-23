@@ -1,12 +1,12 @@
 // Test to make a lot of concurrent writes and verify that they were all written
-const N_WRITES = 10
+const N_WRITES = 1000
 
 const DB_HOST = "http://localhost:3737"
 
 var successes = 0
 
 async function writeJson(table, data) {
-  const writeResp = await fetch(`${DB_HOST}/tables/${table}`, {
+  const writeResp = await fetch(`${DB_HOST}/${table}`, {
     method: "POST",
     body: JSON.stringify(data),
     headers: { "Content-Type": "application/json", "UUID": data["id"] },
@@ -22,7 +22,7 @@ async function writeJson(table, data) {
 }
 
 async function readAllJson(table) {
-  const readResp = await fetch(`${DB_HOST}/tables/${table}`)
+  const readResp = await fetch(`${DB_HOST}/${table}`)
   const data = await readResp.text()
   return JSON.parse(data)
 }

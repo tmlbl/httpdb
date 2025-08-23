@@ -109,15 +109,11 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
     var scanner = std.json.Scanner.initCompleteInput(self.a, value);
     defer scanner.deinit();
 
-    var clausesMatch = try self.a.alloc(bool, self.clauses.items.len);
-    defer self.a.free(clausesMatch);
-
     while (true) {
         const token = try scanner.next();
         switch (token) {
             .end_of_document => break,
             .string => {
-                var clauseIndex: usize = 0;
                 var valueToken: ?std.json.Token = null;
 
                 for (self.clauses.items) |clause| {
@@ -125,62 +121,51 @@ pub fn testValueJson(self: Query, value: []const u8) !bool {
                         if (valueToken == null) {
                             valueToken = try scanner.next();
                         }
-                        clausesMatch[clauseIndex] = switch (valueToken.?) {
+                        const isMatch = switch (valueToken.?) {
                             .string => clause.matchesSlice(valueToken.?.string),
                             .number => try clause.matchesNumber(valueToken.?.number),
                             .true => clause.matchesBoolean(true),
                             .false => clause.matchesBoolean(false),
                             else => false,
                         };
+                        if (!isMatch) {
+                            return false;
+                        }
                     }
-
-                    clauseIndex += 1;
                 }
             },
-            else => {
-                var allMatch = true;
-                for (clausesMatch) |match| {
-                    if (!match) allMatch = false;
-                }
-                if (allMatch) return allMatch;
-            },
+            else => {},
         }
     }
 
-    return false;
+    return true;
 }
 
 pub fn testValueCsv(self: Query, schema: Schema, value: []const u8) !bool {
     var i: usize = 0;
-    var clausesMatch = try self.a.alloc(bool, self.clauses.items.len);
-    defer self.a.free(clausesMatch);
 
     var it = std.mem.splitAny(u8, value, ",");
     while (it.next()) |v| {
-        var clauseIndex: usize = 0;
         const key = schema.columns[i];
 
         for (self.clauses.items) |clause| {
             if (std.mem.eql(u8, key, clause.lhs)) {
                 if (isNumeric(clause.rhs)) {
-                    clausesMatch[clauseIndex] = try clause.matchesNumber(v);
+                    if (!try clause.matchesNumber(v)) {
+                        return false;
+                    }
                 } else {
-                    clausesMatch[clauseIndex] = clause.matchesSlice(v);
+                    if (!clause.matchesSlice(v)) {
+                        return false;
+                    }
                 }
-                clauseIndex += 1;
             }
         }
-
-        var allMatch = true;
-        for (clausesMatch) |match| {
-            if (!match) allMatch = false;
-        }
-        if (allMatch) return allMatch;
 
         i += 1;
     }
 
-    return false;
+    return true;
 }
 
 // Very basic check to see if value contains only numerals and periods
