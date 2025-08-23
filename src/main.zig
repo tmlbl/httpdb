@@ -1,5 +1,6 @@
 const std = @import("std");
 const zin = @import("zinatra");
+const clap = @import("clap");
 
 const storage = @import("./storage.zig");
 const Schema = @import("./schema.zig");
@@ -16,8 +17,37 @@ pub fn main() !void {
     defer {
         _ = gpa.deinit();
     }
+
+    const params = comptime clap.parseParamsComptime(
+        \\-h, --help             Display this help and exit.
+        \\-d, --directory <str>  Directory for the embedded data store
+        \\-w, --workers <usize>  Number of worker threads
+        \\
+    );
+
+    var opts = try clap.parse(clap.Help, &params, clap.parsers.default, .{
+        .allocator = gpa.allocator(),
+    });
+    defer opts.deinit();
+
+    if (opts.args.help != 0) {
+        try clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+        std.process.exit(0);
+    }
+
+    var nWorkers: usize = 16;
+    if (opts.args.workers != null) {
+        nWorkers = opts.args.workers.?;
+    }
+
+    var dataDir: []const u8 = "/tmp/httpdb";
+    if (opts.args.directory != null) {
+        dataDir = opts.args.directory.?;
+    }
+
     var app = try zin.App.init(.{
         .allocator = gpa.allocator(),
+        .n_workers = nWorkers,
     });
     defer app.deinit();
 
@@ -27,7 +57,7 @@ pub fn main() !void {
     try app.delete("/:name", deleteData);
 
     store = try Store.init(.{
-        .dirname = "/tmp/httpdb",
+        .dirname = dataDir,
         .allocator = gpa.allocator(),
     });
     defer store.?.deinit();

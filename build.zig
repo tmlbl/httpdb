@@ -4,12 +4,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "httpdb",
-        .root_source_file = .{ .cwd_relative = "src/main.zig" },
+    const mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
+        .root_source_file = .{ .cwd_relative = "src/main.zig" },
     });
+
+    const exe = b.addExecutable(.{
+        .name = "httpdb",
+        .root_module = mod,
+    });
+
+    const clap = b.dependency("clap", .{});
+    exe.root_module.addImport("clap", clap.module("clap"));
 
     exe.linkLibC();
     exe.linkSystemLibrary("rocksdb");
@@ -22,9 +29,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     const tests = b.addTest(.{
-        .root_source_file = .{ .cwd_relative = "src/json.zig" },
-        .target = target,
-        .optimize = .Debug,
+        .root_module = mod,
     });
     tests.linkLibC();
     tests.linkSystemLibrary("rocksdb");
