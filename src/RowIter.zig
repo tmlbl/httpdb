@@ -95,22 +95,18 @@ pub fn next(self: *RowIter) ?[]const u8 {
 
     if (self.query == null) {
         return value;
-    } else if (self.schema.dataType == .json) {
-        const match = self.query.?.testValueJson(value) catch |err| {
-            std.log.err("error evaluating query! {}", .{err});
-            return value;
-        };
-        if (!match) {
-            return self.next();
-        }
-    } else if (self.schema.dataType == .csv) {
-        const match = self.query.?.testValueCsv(self.schema, value) catch |err| {
-            std.log.err("error evaluating query! {}", .{err});
-            return value;
-        };
-        if (!match) {
-            return self.next();
-        }
+    }
+
+    const match = switch (self.schema.dataType) {
+        .json => self.query.?.testValueJson(value),
+        .csv => self.query.?.testValueCsv(self.schema, value),
+    } catch |err| {
+        std.log.err("error evaluating query: {}", .{err});
+        return value;
+    };
+
+    if (!match) {
+        return self.next();
     }
 
     return value;
