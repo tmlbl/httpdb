@@ -54,7 +54,7 @@ pub fn main() !void {
     });
     defer app.deinit();
 
-    try app.get("/tables", listTablesAll);
+    try app.get("/tables", listTables);
     try app.post("/:name", postData);
     try app.get("/:name", readData);
     try app.delete("/:name", deleteData);
@@ -68,16 +68,8 @@ pub fn main() !void {
     try app.listen();
 }
 
-fn listTablesAll(ctx: *zin.Context) !void {
-    return listTables(ctx, null);
-}
-
-fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
+fn listTables(ctx: *zin.Context) !void {
     try ctx.addHeader(.{ .name = "Content-Type", .value = "application/json" });
-
-    if (tag != null) {
-        std.debug.print("listing tables for tag {s}\n", .{tag.?});
-    }
 
     const buf = try ctx.allocator().alloc(u8, max_row_size);
     defer ctx.allocator().free(buf);
@@ -95,7 +87,6 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
     var it = try storage.SchemaIter.init(
         store.?.allocator,
         store.?.db,
-        tag,
     );
     var first = true;
     while (it.next()) |data| {

@@ -15,12 +15,10 @@ pub const SchemaIter = struct {
     it: ?*rdb.rocksdb_iterator_t,
     first: bool = true,
     prefix: []const u8,
-    isTagIterator: bool,
 
     pub fn init(
         allocator: std.mem.Allocator,
         db: ?*rdb.rocksdb_t,
-        tag: ?[]const u8,
     ) !SchemaIter {
         const readOpts = rdb.rocksdb_readoptions_create();
         const iter = rdb.rocksdb_create_iterator(db, readOpts);
@@ -28,20 +26,14 @@ pub const SchemaIter = struct {
             return error.CouldNotCreateIterator;
         }
 
-        const isTag = tag != null;
         var prefix: []u8 = "";
-        if (isTag) {
-            prefix = try std.fmt.allocPrint(allocator, "tag:{s}:", .{tag.?});
-        } else {
-            prefix = try std.fmt.allocPrint(allocator, "table_def:", .{});
-        }
+        prefix = try std.fmt.allocPrint(allocator, "table_def:", .{});
         rdb.rocksdb_iter_seek(iter.?, prefix.ptr, prefix.len);
         return SchemaIter{
             .db = db,
             .allocator = allocator,
             .it = iter,
             .prefix = prefix,
-            .isTagIterator = isTag,
         };
     }
 
@@ -68,43 +60,7 @@ pub const SchemaIter = struct {
         var valueSize: usize = 0;
         var rawValue = rdb.rocksdb_iter_value(self.it, &valueSize);
 
-        if (!self.isTagIterator) {
-            return rawValue[0..valueSize];
-        } else {
-            // fetch the actual table schema
-            const readOptions = rdb.rocksdb_readoptions_create();
-            var valueLength: usize = 0;
-            var err: [*c]u8 = null;
-
-            const tableName = rawValue[0..valueSize];
-            const key = std.fmt.allocPrint(
-                self.allocator,
-                "table_def:{s}",
-                .{tableName},
-            ) catch |e| {
-                std.log.err("{any}", .{e});
-                return null;
-            };
-            defer self.allocator.free(key);
-
-            var v = rdb.rocksdb_get(
-                self.db,
-                readOptions,
-                key.ptr,
-                key.len,
-                &valueLength,
-                &err,
-            );
-            if (err) |ptr| {
-                const str = std.mem.span(ptr);
-                std.log.err("reading table definition: {s}", .{str});
-                return null;
-            }
-            if (v == null) {
-                return null;
-            }
-            return v[0..valueLength];
-        }
+        return rawValue[0..valueSize];
     }
 };
 
