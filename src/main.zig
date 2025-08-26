@@ -32,7 +32,9 @@ pub fn main() !void {
     defer opts.deinit();
 
     if (opts.args.help != 0) {
-        try clap.help(std.io.getStdErr().writer(), clap.Help, &params, .{});
+        var buf: [512]u8 = undefined;
+        var writer = std.fs.File.stderr().writer(&buf).interface;
+        try clap.help(&writer, clap.Help, &params, .{});
         std.process.exit(0);
     }
 
@@ -71,7 +73,7 @@ fn listTablesAll(ctx: *zin.Context) !void {
 }
 
 fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
-    try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
+    try ctx.addHeader(.{ .name = "Content-Type", .value = "application/json" });
 
     if (tag != null) {
         std.debug.print("listing tables for tag {s}\n", .{tag.?});
@@ -80,15 +82,14 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
     const buf = try ctx.allocator().alloc(u8, max_row_size);
     defer ctx.allocator().free(buf);
 
-    var response = ctx.req.respondStreaming(.{
-        .send_buffer = buf,
+    var response = try ctx.req.respondStreaming(buf, .{
         .respond_options = .{
             .extra_headers = ctx.headers.items,
             .transfer_encoding = .chunked,
         },
     });
 
-    var w = response.writer();
+    var w = response.writer;
     try w.writeByte('[');
 
     var it = try storage.SchemaIter.init(

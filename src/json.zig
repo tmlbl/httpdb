@@ -9,13 +9,14 @@ const MAX_BODY_SIZE = 4096;
 pub fn postDataJSON(ctx: *zin.Context, store: *Store) !void {
     const name = ctx.params.get("name").?;
     // Read and parse
-    const reader = try ctx.req.reader();
+    const buf = try ctx.allocator().alloc(u8, 1024);
+    const reader = try ctx.req.readerExpectContinue(buf);
     if (ctx.req.head.content_length == null) {
         try ctx.text(.bad_request, "missing content-length");
         return;
     }
     const len = ctx.req.head.content_length.?;
-    const data = try reader.readAllAlloc(ctx.allocator(), len);
+    const data = try reader.readAlloc(ctx.allocator(), len);
 
     writeData(ctx.allocator(), store, name, data) catch |err| {
         switch (err) {
@@ -89,7 +90,7 @@ fn writeJsonObject(
 
     const pkey = object.get("id").?.string;
 
-    const data = try std.json.stringifyAlloc(allocator, value, .{});
+    const data = try std.json.Stringify.valueAlloc(allocator, value, .{});
     defer allocator.free(data);
 
     try store.writeRow(table_name, pkey, data);
@@ -99,22 +100,19 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
     const name = ctx.params.get("name").?;
     const query = try Query.fromContext(ctx);
 
-    try ctx.headers.append(.{ .name = "Content-Type", .value = "application/json" });
+    try ctx.addHeader(.{ .name = "Content-Type", .value = "application/json" });
 
     const buf = try ctx.allocator().alloc(u8, 4096);
 
-    var response = ctx.req.respondStreaming(.{
-        .send_buffer = buf,
+    var response = try ctx.req.respondStreaming(buf, .{
         .respond_options = .{
             .extra_headers = ctx.headers.items,
             .transfer_encoding = .chunked,
         },
     });
 
-    const w = response.writer();
-
     const startTime = std.time.milliTimestamp();
-    try scanRows(store, name, query, w);
+    try scanRows(store, name, query, &response.writer);
     const elapsed = std.time.milliTimestamp() - startTime;
 
     std.log.debug("query took {d}ms", .{elapsed});
@@ -125,30 +123,26 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
 fn scanRows(
     store: *Store,
     tableName: []const u8,
-    query: ?Query,
-    writer: std.io.AnyWriter,
+    query: ?*Query,
+    writer: *std.Io.Writer,
 ) !void {
     var it = try store.query(tableName, query);
     defer it.deinit();
 
-    var bw = std.io.BufferedWriter(4096, @TypeOf(writer)){
-        .unbuffered_writer = writer,
-    };
-
     // write JSON array
     var first = true;
-    _ = try bw.write(&[1]u8{'['});
+    _ = try writer.write(&[1]u8{'['});
     while (it.next()) |row| {
         if (first) {
             first = false;
         } else {
-            _ = try bw.write(&[1]u8{','});
+            _ = try writer.write(&[1]u8{','});
         }
-        _ = try bw.write(row);
+        _ = try writer.write(row);
     }
-    _ = try bw.write(&[1]u8{']'});
+    _ = try writer.write(&[1]u8{']'});
 
-    try bw.flush();
+    try writer.flush();
 }
 
 const TestDB = @import("./storage.zig").TestDB;

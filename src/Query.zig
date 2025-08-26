@@ -7,19 +7,20 @@ const Query = @This();
 a: std.mem.Allocator,
 clauses: std.ArrayList(Clause),
 
-fn init(a: std.mem.Allocator) Query {
-    return Query{
-        .a = a,
-        .clauses = std.ArrayList(Clause).init(a),
-    };
+fn init(a: std.mem.Allocator) !*Query {
+    const query = try a.create(Query);
+    query.a = a;
+    query.clauses = try std.ArrayList(Clause).initCapacity(a, 16);
+    return query;
 }
 
-pub fn deinit(self: Query) void {
+pub fn deinit(self: *Query) void {
     for (self.clauses.items) |clause| {
         self.a.free(clause.lhs);
         self.a.free(clause.rhs);
     }
-    self.clauses.deinit();
+    self.clauses.deinit(self.a);
+    self.a.destroy(self);
 }
 
 pub const Comparator = enum {
@@ -63,8 +64,8 @@ pub const Clause = struct {
     }
 };
 
-pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
-    var query = Query.init(a);
+pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?*Query {
+    var query = try Query.init(a);
 
     var clauseIt = std.mem.splitAny(u8, s, "&");
     while (clauseIt.next()) |clauseStr| {
@@ -72,11 +73,12 @@ pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
         const lhs = it.first();
         const rhs = it.next();
         if (rhs == null) {
+            query.deinit();
             return error.NoValueForKey;
         }
         const comparatorByte = clauseStr[lhs.len];
 
-        try query.clauses.append(.{
+        try query.clauses.appendBounded(.{
             .lhs = try a.dupe(u8, lhs),
             .rhs = try a.dupe(u8, rhs.?),
             .comparator = switch (comparatorByte) {
@@ -96,7 +98,7 @@ pub fn fromQueryString(a: std.mem.Allocator, s: []const u8) !?Query {
     }
 }
 
-pub fn fromContext(ctx: *zin.Context) !?Query {
+pub fn fromContext(ctx: *zin.Context) !?*Query {
     const target = ctx.req.head.target;
     const ix = std.mem.indexOf(u8, target, "?");
     if (ix != null) {
@@ -182,7 +184,7 @@ fn isNumeric(s: []const u8) bool {
 
 test "single clause" {
     const s = "foo=bar";
-    const q: ?Query = try fromQueryString(std.testing.allocator, s);
+    const q = try fromQueryString(std.testing.allocator, s);
     defer q.?.deinit();
 
     try std.testing.expectEqual(1, q.?.clauses.items.len);
@@ -209,10 +211,10 @@ test "compound clause" {
 }
 
 test "simple equals query json" {
-    var query = Query.init(std.testing.allocator);
+    var query = try Query.init(std.testing.allocator);
     defer query.deinit();
 
-    try query.clauses.append(Clause{
+    try query.clauses.appendBounded(Clause{
         .comparator = .equal,
         .lhs = try query.a.dupe(u8, "kind"),
         .rhs = try query.a.dupe(u8, "a"),
@@ -230,16 +232,16 @@ test "simple equals query json" {
 }
 
 test "compound query json" {
-    var query = Query.init(std.testing.allocator);
+    var query = try Query.init(std.testing.allocator);
     defer query.deinit();
 
-    try query.clauses.append(Clause{
+    try query.clauses.appendBounded(Clause{
         .comparator = .equal,
         .lhs = try query.a.dupe(u8, "kind"),
         .rhs = try query.a.dupe(u8, "a"),
     });
 
-    try query.clauses.append(Clause{
+    try query.clauses.appendBounded(Clause{
         .comparator = .greater_than,
         .lhs = try query.a.dupe(u8, "id"),
         .rhs = try query.a.dupe(u8, "1"),
@@ -264,10 +266,10 @@ test "bad query string" {
 }
 
 test "numeric query json" {
-    var query = Query.init(std.testing.allocator);
+    var query = try Query.init(std.testing.allocator);
     defer query.deinit();
 
-    try query.clauses.append(Clause{
+    try query.clauses.appendBounded(Clause{
         .comparator = .less_than,
         .lhs = try query.a.dupe(u8, "num"),
         .rhs = try query.a.dupe(u8, "17"),
@@ -301,7 +303,7 @@ test "boolean query json" {
 
 test "mixed value types" {
     const s = "foo=bar";
-    const q: ?Query = try fromQueryString(std.testing.allocator, s);
+    const q = try fromQueryString(std.testing.allocator, s);
     defer q.?.deinit();
     const query = q.?;
 

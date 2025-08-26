@@ -2,11 +2,10 @@ const max_row_size = 4096;
 
 pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     const name = ctx.params.get("name").?;
-    var r = try ctx.req.reader();
-    const header = try r.readUntilDelimiterAlloc(
-        ctx.allocator(),
+    const buf = try ctx.allocator().alloc(u8, max_row_size);
+    var r = try ctx.req.readerExpectContinue(buf);
+    const header = try r.takeDelimiterExclusive(
         '\n',
-        max_row_size,
     );
 
     // create table if not exists
@@ -41,9 +40,8 @@ pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     }
 
     // write rows
-    const buf = try ctx.allocator().alloc(u8, max_row_size);
     while (true) {
-        const row = r.readUntilDelimiter(buf, '\n') catch |err| {
+        const row = r.takeDelimiterExclusive('\n') catch |err| {
             if (err == error.EndOfStream) {
                 break;
             } else {
@@ -76,20 +74,19 @@ pub fn readDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     var it = try store.query(name, query);
     defer it.deinit();
 
-    try ctx.headers.append(.{ .name = "Content-Type", .value = "text/csv" });
+    try ctx.addHeader(.{ .name = "Content-Type", .value = "text/csv" });
 
     const buf = try ctx.allocator().alloc(u8, max_row_size);
     defer ctx.allocator().free(buf);
 
-    var response = ctx.req.respondStreaming(.{
-        .send_buffer = buf,
+    var response = try ctx.req.respondStreaming(buf, .{
         .respond_options = .{
             .extra_headers = ctx.headers.items,
             .transfer_encoding = .chunked,
         },
     });
 
-    var w = response.writer();
+    var w = response.writer;
 
     // write header
     const cols = tdef.?.value.columns;
@@ -102,17 +99,13 @@ pub fn readDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
         }
     }
 
-    var bw = std.io.BufferedWriter(max_row_size, @TypeOf(w)){
-        .unbuffered_writer = w,
-    };
-
     // write rows
     while (it.next()) |row| {
-        _ = try bw.write(row);
-        _ = try bw.write(&[1]u8{'\n'});
+        _ = try w.write(row);
+        _ = try w.write(&[1]u8{'\n'});
     }
 
-    try bw.flush();
+    try w.flush();
 
     try response.end();
 }

@@ -1,7 +1,7 @@
 const std = @import("std");
 const Schema = @import("./schema.zig");
 const Query = @import("./Query.zig");
-const rdb = @cImport(@cInclude("rocksdb/c.h"));
+const rdb = @import("rocksdb.zig").rdb;
 
 pub const RowIter = @This();
 
@@ -10,13 +10,13 @@ it: *rdb.rocksdb_iterator_t,
 first: bool = true,
 prefix: []const u8,
 schema: Schema,
-query: ?Query = null,
+query: ?*Query = null,
 
 pub fn init(
     allocator: std.mem.Allocator,
     db: ?*rdb.rocksdb_t,
     schema: Schema,
-    q: ?Query,
+    q: ?*Query,
 ) !RowIter {
     const readOpts = rdb.rocksdb_readoptions_create();
     const iter = rdb.rocksdb_create_iterator(db, readOpts);
@@ -51,7 +51,7 @@ fn tablePrefix(allocator: std.mem.Allocator, schema: Schema, pkey: []const u8) !
     );
 }
 
-fn getSeekKey(query: ?Query, schema: Schema) []const u8 {
+fn getSeekKey(query: ?*Query, schema: Schema) []const u8 {
     if (query != null) {
         for (query.?.clauses.items) |clause| {
             if (schema.dataType == .csv and

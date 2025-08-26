@@ -2,7 +2,7 @@ const std = @import("std");
 const Schema = @import("./schema.zig");
 const Query = @import("./Query.zig");
 const RowIter = @import("./RowIter.zig");
-const rdb = @cImport(@cInclude("rocksdb/c.h"));
+const rdb = @import("rocksdb.zig").rdb;
 
 pub const Options = struct {
     allocator: std.mem.Allocator,
@@ -205,7 +205,7 @@ pub const Store = struct {
             return error.AlreadyExists;
         }
 
-        const data = try std.json.stringifyAlloc(
+        const data = try std.json.Stringify.valueAlloc(
             self.allocator,
             schema,
             .{},
@@ -265,7 +265,7 @@ pub const Store = struct {
         try self.put(key, data);
     }
 
-    pub fn query(self: *Store, table: []const u8, q: ?Query) !RowIter {
+    pub fn query(self: *Store, table: []const u8, q: ?*Query) !RowIter {
         const schema = try self.getTable(table);
         defer schema.?.deinit();
         return RowIter.init(
@@ -276,7 +276,7 @@ pub const Store = struct {
         );
     }
 
-    pub fn deleteData(self: *Store, schema: Schema, q: ?Query) !void {
+    pub fn deleteData(self: *Store, schema: Schema, q: ?*Query) !void {
         self.tableMtx.lock();
         defer self.tableMtx.unlock();
 
