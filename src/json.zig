@@ -111,10 +111,8 @@ pub fn readDataJSON(ctx: *zin.Context, store: *Store) !void {
         },
     });
 
-    const w = response.writer;
-
     const startTime = std.time.milliTimestamp();
-    try scanRows(store, name, query, w);
+    try scanRows(store, name, query, &response.writer);
     const elapsed = std.time.milliTimestamp() - startTime;
 
     std.log.debug("query took {d}ms", .{elapsed});
@@ -126,29 +124,25 @@ fn scanRows(
     store: *Store,
     tableName: []const u8,
     query: ?*Query,
-    writer: std.Io.Writer,
+    writer: *std.Io.Writer,
 ) !void {
     var it = try store.query(tableName, query);
     defer it.deinit();
 
-    var bw = std.io.BufferedWriter(4096, @TypeOf(writer)){
-        .unbuffered_writer = writer,
-    };
-
     // write JSON array
     var first = true;
-    _ = try bw.write(&[1]u8{'['});
+    _ = try writer.write(&[1]u8{'['});
     while (it.next()) |row| {
         if (first) {
             first = false;
         } else {
-            _ = try bw.write(&[1]u8{','});
+            _ = try writer.write(&[1]u8{','});
         }
-        _ = try bw.write(row);
+        _ = try writer.write(row);
     }
-    _ = try bw.write(&[1]u8{']'});
+    _ = try writer.write(&[1]u8{']'});
 
-    try bw.flush();
+    try writer.flush();
 }
 
 const TestDB = @import("./storage.zig").TestDB;

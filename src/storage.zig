@@ -2,7 +2,7 @@ const std = @import("std");
 const Schema = @import("./schema.zig");
 const Query = @import("./Query.zig");
 const RowIter = @import("./RowIter.zig");
-const rdb = @cImport(@cInclude("rocksdb/c.h"));
+const rdb = @import("rocksdb.zig").rdb;
 
 pub const Options = struct {
     allocator: std.mem.Allocator,
