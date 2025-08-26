@@ -89,7 +89,7 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
         },
     });
 
-    var w = response.writer;
+    var w = &response.writer;
     try w.writeByte('[');
 
     var it = try storage.SchemaIter.init(
@@ -107,7 +107,8 @@ fn listTables(ctx: *zin.Context, tag: ?[]const u8) !void {
     }
 
     try w.writeByte(']');
-    try response.end();
+    try w.flush();
+    try response.endChunked(.{});
 }
 
 fn postData(ctx: *zin.Context) !void {
