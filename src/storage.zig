@@ -340,7 +340,7 @@ test "table defs" {
     }
 
     // delete table
-    try td.s.deleteTable(table.name);
+    try td.s.deleteData(table, null);
     try std.testing.expect((try td.s.getTable(table.name)) == null);
 }
 

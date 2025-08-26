@@ -84,7 +84,7 @@ pub fn readDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
         },
     });
 
-    var w = response.writer;
+    var w = &response.writer;
 
     // write header
     const cols = tdef.?.value.columns;
@@ -105,7 +105,7 @@ pub fn readDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
 
     try w.flush();
 
-    try response.end();
+    try response.endChunked(.{});
 }
 
 const Query = @import("Query.zig");

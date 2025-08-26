@@ -85,7 +85,10 @@ fn writeJsonObject(
         table.?.deinit();
     }
 
-    const pkey = object.get("id").?.string;
+    const pkey = switch (object.get("id").?) {
+        .string => |s| s,
+        else => return error.NonStringIdKey,
+    };
 
     const data = try std.json.Stringify.valueAlloc(allocator, value, .{});
     defer allocator.free(data);
@@ -174,6 +177,22 @@ test "write bad data" {
         std.testing.allocator,
         &store.s,
         table_name,
+        data,
+    ));
+}
+
+test "non-string key" {
+    var store = try TestDB.init();
+    defer store.deinit();
+
+    const data =
+        \\{"id":1234}
+    ;
+
+    try std.testing.expectError(error.NonStringIdKey, writeData(
+        std.testing.allocator,
+        &store.s,
+        "nonstring",
         data,
     ));
 }

@@ -12,3 +12,5 @@ df = pd.DataFrame(
     index=pd.date_range("20130101", periods=n_rows, freq="T"),
 )
 
+resp = requests.post(f"{HTTPDB_HOST}/frame", data=df.to_csv())
+print(resp.text)

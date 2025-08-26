@@ -28,14 +28,23 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    const tests = b.addTest(.{
+    const mod_tests = b.addTest(.{
         .root_module = mod,
     });
-    tests.linkLibC();
-    tests.linkSystemLibrary("rocksdb");
+    mod_tests.linkLibC();
+    mod_tests.linkSystemLibrary("rocksdb");
 
-    const run_tests = b.addRunArtifact(tests);
+    const run_tests = b.addRunArtifact(mod_tests);
+
+    const exe_tests = b.addTest(.{
+        .root_module = exe.root_module,
+    });
+    exe_tests.linkLibC();
+    exe_tests.linkSystemLibrary("rocksdb");
+
+    const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const test_step = b.step("test", "Run the tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_exe_tests.step);
 }

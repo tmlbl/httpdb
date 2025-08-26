@@ -31,7 +31,7 @@ pub fn randomCharsAlloc(a: std.mem.Allocator, n: usize) ![]const u8 {
 pub fn tempDir(a: std.mem.Allocator, prefix: []const u8) ![:0]u8 {
     const buf = try a.alloc(u8, 10);
     randomChars(buf);
-    const p = try std.fmt.allocPrintZ(a, "/tmp/{s}-{s}", .{ prefix, buf });
+    const p = try std.fmt.allocPrintSentinel(a, "/tmp/{s}-{s}", .{ prefix, buf }, 0);
     a.free(buf);
     return p;
 }

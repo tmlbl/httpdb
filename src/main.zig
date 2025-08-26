@@ -107,19 +107,16 @@ fn postData(ctx: *zin.Context) !void {
     var reader = try ctx.req.readerExpectContinue(buf);
     if (ctx.req.head.content_type) |ctype| {
         if (std.mem.eql(u8, ctype, "application/json")) {
-            try json.postDataJSON(ctx, &store.?, reader);
+            return json.postDataJSON(ctx, &store.?, reader);
         } else if (std.mem.eql(u8, ctype, "text/csv")) {
-            try csv.postDataCSV(ctx, &store.?, reader);
-        } else {
-            // infer datatype from payload
-            const byte = try reader.peekByte();
-            switch (byte) {
-                '[', '{' => try json.postDataJSON(ctx, &store.?, reader),
-                else => try csv.postDataCSV(ctx, &store.?, reader),
-            }
+            return csv.postDataCSV(ctx, &store.?, reader);
         }
-    } else {
-        try ctx.text(.bad_request, "missing content-type header");
+    }
+    // infer datatype from payload
+    const byte = try reader.peekByte();
+    switch (byte) {
+        '[', '{' => try json.postDataJSON(ctx, &store.?, reader),
+        else => try csv.postDataCSV(ctx, &store.?, reader),
     }
 }
 
@@ -151,4 +148,9 @@ fn deleteData(ctx: *zin.Context) !void {
     const query = try Query.fromContext(ctx);
     try store.?.deleteData(schema.?.value, query);
     try ctx.fmt(.ok, "deleted from table {s}", .{name});
+}
+
+test {
+    _ = @import("storage.zig");
+    _ = @import("json.zig");
 }
