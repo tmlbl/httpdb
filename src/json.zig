@@ -6,11 +6,8 @@ const Query = @import("./Query.zig");
 
 const MAX_BODY_SIZE = 4096;
 
-pub fn postDataJSON(ctx: *zin.Context, store: *Store) !void {
+pub fn postDataJSON(ctx: *zin.Context, store: *Store, reader: *std.Io.Reader) !void {
     const name = ctx.params.get("name").?;
-    // Read and parse
-    const buf = try ctx.allocator().alloc(u8, 1024);
-    const reader = try ctx.req.readerExpectContinue(buf);
     if (ctx.req.head.content_length == null) {
         try ctx.text(.bad_request, "missing content-length");
         return;

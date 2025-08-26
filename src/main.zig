@@ -103,13 +103,20 @@ fn listTables(ctx: *zin.Context) !void {
 }
 
 fn postData(ctx: *zin.Context) !void {
+    const buf = try ctx.allocator().alloc(u8, 4096);
+    var reader = try ctx.req.readerExpectContinue(buf);
     if (ctx.req.head.content_type) |ctype| {
         if (std.mem.eql(u8, ctype, "application/json")) {
-            try json.postDataJSON(ctx, &store.?);
+            try json.postDataJSON(ctx, &store.?, reader);
         } else if (std.mem.eql(u8, ctype, "text/csv")) {
-            try csv.postDataCSV(ctx, &store.?);
+            try csv.postDataCSV(ctx, &store.?, reader);
         } else {
-            try ctx.fmt(.bad_request, "unsupported content-type: {s}", .{ctype});
+            // infer datatype from payload
+            const byte = try reader.peekByte();
+            switch (byte) {
+                '[', '{' => try json.postDataJSON(ctx, &store.?, reader),
+                else => try csv.postDataCSV(ctx, &store.?, reader),
+            }
         }
     } else {
         try ctx.text(.bad_request, "missing content-type header");

@@ -1,10 +1,8 @@
 const max_row_size = 4096;
 
-pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
+pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store, reader: *std.Io.Reader) !void {
     const name = ctx.params.get("name").?;
-    const buf = try ctx.allocator().alloc(u8, max_row_size);
-    var r = try ctx.req.readerExpectContinue(buf);
-    const header = try r.takeDelimiterExclusive(
+    const header = try reader.takeDelimiterExclusive(
         '\n',
     );
 
@@ -41,7 +39,7 @@ pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
 
     // write rows
     while (true) {
-        const row = r.takeDelimiterExclusive('\n') catch |err| {
+        const row = reader.takeDelimiterExclusive('\n') catch |err| {
             if (err == error.EndOfStream) {
                 break;
             } else {
