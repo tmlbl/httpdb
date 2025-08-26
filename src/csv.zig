@@ -2,11 +2,10 @@ const max_row_size = 4096;
 
 pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     const name = ctx.params.get("name").?;
-    var r = try ctx.req.reader();
-    const header = try r.readUntilDelimiterAlloc(
-        ctx.allocator(),
+    const buf = try ctx.allocator().alloc(u8, max_row_size);
+    var r = try ctx.req.readerExpectContinue(buf);
+    const header = try r.takeDelimiterExclusive(
         '\n',
-        max_row_size,
     );
 
     // create table if not exists
@@ -41,9 +40,8 @@ pub fn postDataCSV(ctx: *zin.Context, store: *storage.Store) !void {
     }
 
     // write rows
-    const buf = try ctx.allocator().alloc(u8, max_row_size);
     while (true) {
-        const row = r.readUntilDelimiter(buf, '\n') catch |err| {
+        const row = r.takeDelimiterExclusive('\n') catch |err| {
             if (err == error.EndOfStream) {
                 break;
             } else {
